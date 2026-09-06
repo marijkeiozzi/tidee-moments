@@ -67,6 +67,23 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
 
       const heicCount = safeFiles.filter(isHeicFile).length;
 
+      // Read EXIF/screenshot metadata from the ORIGINAL file, before HEIC conversion — heic2any
+      // re-encodes through a canvas, which drops EXIF entirely (including the camera Make/Model
+      // that isScreenshot's real-photo check depends on). Reading metadata afterward meant every
+      // converted iPhone photo looked exactly like a screenshot (no camera EXIF, JPEG), silently
+      // misfiling real photos. exifr reads HEIC's own EXIF directly, so this has always been the
+      // correct order — do it first, then convert for storage/display.
+      let metaDone = 0;
+      setStatus(`Reading ${safeFiles.length} photo${safeFiles.length === 1 ? '' : 's'}…`);
+      const metas = await mapWithConcurrency(safeFiles, concurrency, async (file) => {
+        const meta = await getFileMeta(file);
+        metaDone++;
+        if (safeFiles.length > 10 && (metaDone % PROGRESS_STEP === 0 || metaDone === safeFiles.length)) {
+          setStatus(`Reading photos… ${metaDone}/${safeFiles.length}`);
+        }
+        return meta;
+      });
+
       let convertedDone = 0;
       if (heicCount > 0) setStatus(`Converting ${heicCount} iPhone photo${heicCount === 1 ? '' : 's'}…`);
       const converted = await mapWithConcurrency(safeFiles, concurrency, async (file) => {
@@ -82,18 +99,7 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
         }
       });
 
-      let metaDone = 0;
-      setStatus(`Reading ${converted.length} photo${converted.length === 1 ? '' : 's'}…`);
-      const withMeta = await mapWithConcurrency(converted, concurrency, async (file) => {
-        const meta = await getFileMeta(file);
-        metaDone++;
-        if (converted.length > 10 && (metaDone % PROGRESS_STEP === 0 || metaDone === converted.length)) {
-          setStatus(`Reading photos… ${metaDone}/${converted.length}`);
-        }
-        return { file, ...meta };
-      });
-
-      const entries: NewPhotoEntry[] = withMeta;
+      const entries: NewPhotoEntry[] = converted.map((file, i) => ({ file, ...metas[i] }));
       const screenshotCount = entries.filter((e) => e.isScreenshot).length;
 
       setStatus('Saving…');

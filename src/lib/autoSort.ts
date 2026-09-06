@@ -112,11 +112,13 @@ export async function runAutoSort(photos: Photo[], onProgress: (done: number, to
   // distance well past STRICT_DUPLICATE_CEILING even though the shots are obviously redundant.
   // A close-up handheld selfie session moves this even further — the phone itself shifts a few
   // centimeters between shots, which reframes a close subject a lot more than the same handshake
-  // would for a farther-away scene. This looser ceiling only applies to members of a time-bounded
-  // burst (already confirmed within ~30s of each other by groupIntoBursts), so the risk of it
-  // linking two unrelated moments is already bounded by that time window, unlike the any-time-gap
-  // pass above.
-  const BURST_DUPLICATE_CEILING = 22;
+  // would for a farther-away scene. Small in-frame changes (a blink, eyes gradually closing while
+  // falling asleep) push it further still. This looser ceiling only applies to members of a
+  // time-bounded burst (already confirmed within ~30s of each other by groupIntoBursts), so the
+  // risk of it linking two unrelated moments is already bounded by that time window, unlike the
+  // any-time-gap pass above — tuned aggressively per explicit user preference for deduping over
+  // preserving small in-sequence variation.
+  const BURST_DUPLICATE_CEILING = 32;
 
   function resolveGroup(groupChecks: Check[], isBurst: boolean) {
     if (groupChecks.length < 2) return;

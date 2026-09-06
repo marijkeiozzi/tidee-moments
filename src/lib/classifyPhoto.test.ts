@@ -91,9 +91,9 @@ const cases: Case[] = [
     expect: 'delete',
   },
   {
-    name: 'burst: same time window but different pose/expression (distance 24, not a real duplicate)',
+    name: 'burst: different moment entirely, well beyond the loosened ceiling (distance 45, not a real duplicate)',
     signals: { ...BASE, sharpness: 180, faceCount: 1, openEyesFraction: 1 },
-    dup: { hammingDistance: 24, qualityGap: 300, comparePhotoId: 'winner' },
+    dup: { hammingDistance: 45, qualityGap: 300, comparePhotoId: 'winner' },
     expect: 'keep',
   },
   {

@@ -66,12 +66,12 @@ const BLANK_SHARPNESS = 6;
 // deletion, never to gate whether one happens at all — see DUPLICATE_HAMMING_CEILING below.
 const MEANINGFUL_DUPLICATE_QUALITY_GAP = 50;
 // Upper bound on the Hamming distance autoSort.ts will ever attach to a DuplicateContext — the
-// tight any-time-gap pass caps at 8, the time-bounded burst pass at 22 (posed multi-shot
-// sequences, especially close-up handheld selfies, have real pose/arm/phone movement between
-// frames, not just noise). Both are already evidence a photo is redundant with the one being
-// kept, so classifyPhoto trusts whatever distance it's handed rather than re-gating it stricter
-// than autoSort already did.
-const DUPLICATE_HAMMING_CEILING = 22;
+// tight any-time-gap pass caps at 8, the time-bounded burst pass at 32 (posed multi-shot
+// sequences, especially close-up handheld selfies or small in-frame changes like eyes closing,
+// have real pose/arm/phone movement between frames, not just noise). Both are already evidence a
+// photo is redundant with the one being kept, so classifyPhoto trusts whatever distance it's
+// handed rather than re-gating it stricter than autoSort already did.
+const DUPLICATE_HAMMING_CEILING = 32;
 // sceneClassification.ts's own isUtilityPhoto flag trips at 35% confidence — tuned for a much
 // lower-stakes use (excluding a photo from winning a duplicate group). A NICU monitor, a
 // medical device, or a car dashboard photographed up close can easily read as "desk" or

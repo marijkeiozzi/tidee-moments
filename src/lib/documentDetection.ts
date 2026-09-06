@@ -10,7 +10,11 @@
 // catching a flat, text-covered UI region even when the rest of the frame is a genuine photo.
 
 const SAMPLE_SIZE = 120;
-const MAX_AVG_SATURATION = 0.16;
+// Loosened from 0.16 — a recipe/cookbook page often has a colored header band or a highlighted
+// ingredient line mixed into an otherwise plain paper page, which can push the whole-frame
+// average saturation slightly above a very strict near-grayscale cutoff even though the page is
+// still obviously a document, not a photo.
+const MAX_AVG_SATURATION = 0.22;
 const MIN_BRIGHT_FRACTION = 0.45;
 const MIN_EDGE_VARIANCE = 40;
 // The half-frame checks exist to catch a screenshot that's only document-like in part of the
