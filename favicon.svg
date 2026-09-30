@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Tidee Moments app icon">
+  <title>Tidee Moments app icon</title>
+  <rect x="0" y="0" width="512" height="512" rx="114" fill="#3E2328"/>
+  <g transform="translate(256,268) scale(2.4)">
+    <rect x="-38" y="-56" width="40" height="17" rx="7" fill="#EA7987"/>
+    <rect x="-56" y="-45" width="112" height="90" rx="18" fill="#EA7987"/>
+    <circle cx="38" cy="-28" r="4.5" fill="#FBD4D8"/>
+    <circle cx="0" cy="2" r="33" fill="#C9505F"/>
+    <path d="M0 22 L28 22 M-19 12 L-31 -8 M-13 -17 L-2 -32 M13 -17 L2 -32 M19 12 L31 -8" stroke="#EA7987" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M0 22 C-21 4 -19 -18 -6 -18 C-1 -18 0 -13 0 -10 C0 -13 1 -18 6 -18 C19 -18 21 4 0 22 Z" fill="#FFFFFF"/>
+  </g>
+</svg>
