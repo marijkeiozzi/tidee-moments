@@ -57,12 +57,12 @@ export default function SwipeDeck({
 
   if (!top) {
     return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-400 gap-3">
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-[#A69C8E] gap-3">
         <span className="text-4xl">🎉</span>
         <span>No photos left to tidee up — nice work!</span>
         <button
           onClick={onGoToAlbums}
-          className="text-sm bg-rose-400 hover:bg-rose-500 text-white font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all"
+          className="text-sm bg-[#231F1B] hover:bg-black text-white font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all"
         >
           📁 View your sorted photos
         </button>

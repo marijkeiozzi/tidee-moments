@@ -8,7 +8,9 @@ import { detectDocumentLike } from './documentDetection';
 import { classifyScene } from './sceneClassification';
 import { scorePhotoQuality } from './photoScore';
 import { mapWithConcurrency, pickConcurrency } from './concurrency';
-import { classifyPhoto, type ClassifySignals, type DuplicateContext } from './classifyPhoto';
+import { classifyPhoto, type ClassifySignals, type DuplicateContext, type Sensitivity } from './classifyPhoto';
+
+export type { Sensitivity };
 
 export interface DeleteCandidate {
   photo: Photo;
@@ -17,9 +19,27 @@ export interface DeleteCandidate {
   comparePhotoId?: string;
 }
 
+// One photo within a "moment" (a burst, or a standalone shot treated as a moment of one) — used
+// to render the day/moment-grouped review UI, including which member(s) of a moment were flagged
+// as visually similar to the one being kept.
+export interface MomentPhoto {
+  photo: Photo;
+  kept: boolean;
+  similar: boolean;
+  reason?: string;
+  evidence?: string;
+}
+
+export interface Moment {
+  id: string;
+  timestamp: number;
+  photos: MomentPhoto[];
+}
+
 export interface AutoSortResult {
   keep: Photo[];
   toDelete: DeleteCandidate[];
+  moments: Moment[];
 }
 
 // How often the progress callback fires for a big batch — calling it (and the React state
@@ -36,7 +56,11 @@ const NO_FACE_CHECK = { eyesClosed: false, facingAway: false, faceCount: 0, open
 
 // Entirely on-device — blur, closed-eyes, exposure/resolution, and near-duplicate detection.
 // No AI, no API call, no cost, works offline.
-export async function runAutoSort(photos: Photo[], onProgress: (done: number, total: number) => void): Promise<AutoSortResult> {
+export async function runAutoSort(
+  photos: Photo[],
+  onProgress: (done: number, total: number) => void,
+  sensitivity: Sensitivity = 'balanced',
+): Promise<AutoSortResult> {
   const keep: Photo[] = [];
   const toDelete: DeleteCandidate[] = [];
   let done = 0;
@@ -170,6 +194,8 @@ export async function runAutoSort(photos: Photo[], onProgress: (done: number, to
   }
 
   const debugRows: Record<string, unknown>[] = [];
+  const keptIds = new Set<string>();
+  const resultById = new Map<string, { reason: string; evidence: string }>();
   for (const c of checks) {
     const isWinner = forceKeepIds.has(c.photo.id);
     // Group winners are protected from duplicate-loser status and from soft/uncertain signals
@@ -181,9 +207,10 @@ export async function runAutoSort(photos: Photo[], onProgress: (done: number, to
     // passed for a winner — it's the reference point other members are compared against, so it
     // can never itself be "a duplicate of something better."
     const dup = isWinner ? undefined : dupContextById.get(c.photo.id);
-    const result = classifyPhoto(c, dup);
+    const result = classifyPhoto(c, dup, sensitivity);
     if (isWinner && result.verdict !== 'delete') {
       keep.push(c.photo);
+      keptIds.add(c.photo.id);
       debugRows.push({ id: c.photo.id.slice(0, 8), verdict: 'keep (group winner)' });
       continue;
     }
@@ -199,15 +226,48 @@ export async function runAutoSort(photos: Photo[], onProgress: (done: number, to
       duplicate: result.scores.duplicateScore.toFixed(2),
       confidence: result.scores.confidence.toFixed(2),
     });
+    resultById.set(c.photo.id, { reason: result.reason, evidence: result.evidence });
     if (result.verdict === 'delete') {
       toDelete.push({ photo: c.photo, reason: result.reason, evidence: result.evidence, comparePhotoId: dup?.comparePhotoId });
     } else {
       keep.push(c.photo);
+      keptIds.add(c.photo.id);
     }
   }
   // Per-photo score breakdown for diagnosability — visible in devtools, never shown to the
   // parent using the app. See classifyPhoto.ts for what each column means.
   if (debugRows.length > 0) console.table(debugRows);
 
-  return { keep, toDelete };
+  // Group every processed photo into "moments" for the review UI — a burst becomes one moment,
+  // and any photo that wasn't part of a burst becomes its own single-shot moment. This is purely
+  // a display grouping (by capture time), separate from the duplicate/keep decision above.
+  const inBurst = new Set<string>();
+  const moments: Moment[] = burstGroups.map((burst) => {
+    const momentPhotos = burst.photoIds.map((id) => {
+      inBurst.add(id);
+      const c = checkById.get(id)!;
+      const r = resultById.get(id);
+      return {
+        photo: c.photo,
+        kept: keptIds.has(id),
+        similar: dupContextById.has(id),
+        reason: r?.reason,
+        evidence: r?.evidence,
+      };
+    });
+    momentPhotos.sort((a, b) => a.photo.capturedAt - b.photo.capturedAt);
+    return { id: burst.id, timestamp: momentPhotos[0].photo.capturedAt, photos: momentPhotos };
+  });
+  for (const c of checks) {
+    if (inBurst.has(c.photo.id)) continue;
+    const r = resultById.get(c.photo.id);
+    moments.push({
+      id: `single-${c.photo.id}`,
+      timestamp: c.photo.capturedAt,
+      photos: [{ photo: c.photo, kept: keptIds.has(c.photo.id), similar: dupContextById.has(c.photo.id), reason: r?.reason, evidence: r?.evidence }],
+    });
+  }
+  moments.sort((a, b) => a.timestamp - b.timestamp);
+
+  return { keep, toDelete, moments };
 }

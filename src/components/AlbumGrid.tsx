@@ -153,44 +153,46 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <button onClick={onBack} className="text-rose-400 font-medium hover:underline">
-          ← Back
-        </button>
-        <h2 className="text-lg font-bold text-stone-100">📁 {title}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
+        <div>
+          <button onClick={onBack} className="text-sm text-[#8A8177] hover:text-[#231F1B] transition-colors mb-2">
+            ← Back
+          </button>
+          <h2 className="font-serif text-3xl sm:text-4xl">{title}</h2>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleSharePage}
             disabled={buildingPage || photos.length === 0}
-            className="text-sm bg-rose-400 hover:bg-rose-500 text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:hover:shadow-sm"
+            className="inline-flex items-center gap-2 text-sm font-medium bg-white hover:bg-[#F6F1E7] text-[#231F1B] border border-black/10 px-4 py-2 rounded-full transition-colors disabled:opacity-40"
           >
-            {buildingPage ? 'Building…' : '📤 Share as a page'}
+            {buildingPage ? 'Building…' : 'Share as a page'}
           </button>
           <button
             onClick={handleExport}
             disabled={exporting || photos.length === 0}
-            className="text-sm bg-stone-800 hover:bg-stone-900 text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:hover:shadow-sm"
+            className="text-sm font-medium bg-[#231F1B] hover:bg-black text-white px-4 py-2 rounded-full transition-colors disabled:opacity-40"
           >
-            {exporting ? 'Zipping…' : '📦 Export zip'}
+            {exporting ? 'Zipping…' : 'Export zip'}
           </button>
         </div>
       </div>
 
-      <p className="text-xs text-stone-400 mb-4">
+      <p className="text-xs text-[#A69C8E] mb-4">
         Tap photos below to select them, then file a batch into an album in one go. "Share as a page" makes
         one file you can text/email/AirDrop — "Export zip" gives you the original files.
       </p>
 
       {exportNote && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
           ⚠️ {exportNote}
         </p>
       )}
 
       {photos.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4 bg-white border border-stone-200 rounded-2xl p-3">
+        <div className="flex flex-wrap items-center gap-2 mb-4 bg-white border border-black/5 rounded-2xl p-3">
           {selectedIds.size === 0 ? (
-            <span className="text-sm text-stone-400">No photos selected yet — tap any photo below.</span>
+            <span className="text-sm text-[#A69C8E]">No photos selected yet — tap any photo below.</span>
           ) : creatingAlbum ? (
             <form
               onSubmit={(e) => {
@@ -205,31 +207,31 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
                 value={newAlbumName}
                 onChange={(e) => setNewAlbumName(e.target.value)}
                 placeholder="Album name…"
-                className="text-sm border border-stone-200 bg-white rounded-full px-3 py-1.5 text-stone-700 focus:outline-none focus:border-rose-300"
+                className="text-sm border border-black/10 bg-white rounded-full px-3 py-1.5 text-[#231F1B] focus:outline-none focus:border-[#BB5133]/50"
               />
               <button
                 type="submit"
                 disabled={!newAlbumName.trim()}
-                className="text-sm bg-stone-800 hover:bg-stone-900 text-white font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
+                className="text-sm bg-[#231F1B] hover:bg-black text-white font-medium px-3 py-1.5 rounded-full disabled:opacity-40"
               >
                 Create
               </button>
               <button
                 type="button"
                 onClick={() => setCreatingAlbum(false)}
-                className="text-sm text-stone-500 hover:underline"
+                className="text-sm text-[#8A8177] hover:underline"
               >
                 Cancel
               </button>
             </form>
           ) : (
             <>
-              <span className="text-sm font-semibold text-stone-700">{selectedIds.size} selected</span>
+              <span className="text-sm font-semibold text-[#231F1B]">{selectedIds.size} selected</span>
               {albums.length > 0 && (
                 <select
                   value={targetAlbumId}
                   onChange={(e) => setTargetAlbumId(e.target.value)}
-                  className="text-sm border border-stone-200 bg-white rounded-lg px-2 py-1.5 text-stone-700"
+                  className="text-sm border border-black/10 bg-white rounded-lg px-2 py-1.5 text-[#231F1B]"
                 >
                   {albums.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -238,19 +240,19 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
                   ))}
                 </select>
               )}
-              <button onClick={() => setCreatingAlbum(true)} className="text-sm text-rose-400 hover:underline">
+              <button onClick={() => setCreatingAlbum(true)} className="text-sm text-[#BB5133] hover:underline">
                 + New album
               </button>
               <button
                 onClick={handleMoveSelected}
                 disabled={!targetAlbumId || moving}
-                className="text-sm bg-rose-400 hover:bg-rose-500 text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40"
+                className="text-sm bg-[#231F1B] hover:bg-black text-white font-medium px-3 py-1.5 rounded-full transition-colors disabled:opacity-40"
               >
-                {moving ? 'Moving…' : '📁 Move selected'}
+                {moving ? 'Moving…' : 'Move selected'}
               </button>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                className="text-sm text-stone-400 hover:underline ml-auto"
+                className="text-sm text-[#A69C8E] hover:underline ml-auto"
               >
                 Clear selection
               </button>
@@ -260,13 +262,13 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
       )}
 
       {photos.length === 0 ? (
-        <p className="text-stone-400">{emptyMessage ?? 'No photos here yet 🌱'}</p>
+        <p className="text-[#A69C8E]">{emptyMessage ?? 'No photos here yet 🌱'}</p>
       ) : (
         <VirtualPhotoGrid photos={photos} isSelected={isSelected} onToggle={toggleSelected} onNoteChange={setPhotoNote} />
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-stone-800 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#231F1B] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
           {toast}
         </div>
       )}

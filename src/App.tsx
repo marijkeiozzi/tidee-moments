@@ -3,11 +3,11 @@ import UploadZone from './components/UploadZone';
 import SwipeDeck from './components/SwipeDeck';
 import AlbumGrid from './components/AlbumGrid';
 import AlbumCard from './components/AlbumCard';
-import Logo from './components/Logo';
 import LandingPage from './components/LandingPage';
 import PeopleTab from './components/PeopleTab';
 import PersonGrid from './components/PersonGrid';
 import AutoSortReview, { type ConfirmAlbumChoice } from './components/AutoSortReview';
+import SavingScreen from './components/SavingScreen';
 import {
   addPhotos,
   assignPhotoToAlbum,
@@ -24,9 +24,9 @@ import {
   type Person,
   type Photo,
 } from './db/indexedDb';
-import { groupIntoSessions, groupPhotosByDay, groupPhotosByMonth } from './lib/sessions';
+import { groupIntoSessions } from './lib/sessions';
 import { groupIntoBursts } from './lib/bursts';
-import { runAutoSort, type AutoSortResult } from './lib/autoSort';
+import { runAutoSort, type AutoSortResult, type Sensitivity } from './lib/autoSort';
 
 type Tab = 'sort' | 'albums' | 'people';
 
@@ -50,6 +50,9 @@ export default function App() {
   const [autoSortProgress, setAutoSortProgress] = useState<{ done: number; total: number } | null>(null);
   const [autoSortResult, setAutoSortResult] = useState<AutoSortResult | null>(null);
   const [confirmingAutoSort, setConfirmingAutoSort] = useState(false);
+  const [sensitivity, setSensitivity] = useState<Sensitivity>('balanced');
+  const [resorting, setResorting] = useState(false);
+  const [savingProgress, setSavingProgress] = useState<{ done: number; total: number; photo: Photo | null } | null>(null);
   // Every inbox photo ever seen, kept even after it's swiped away — so session boundaries
   // (computed from this) don't shift as the live queue shrinks mid-sort.
   const [allInboxEver, setAllInboxEver] = useState<Photo[]>([]);
@@ -194,15 +197,32 @@ export default function App() {
     await Promise.all(toDelete.map((p) => updatePhotoStatus(p.id, 'trashed')));
   }
 
-  async function handleAutoSort() {
+  async function handleAutoSort(nextSensitivity: Sensitivity = sensitivity) {
     if (allSortablePhotos.length === 0) return;
     setAutoSorting(true);
     setAutoSortProgress({ done: 0, total: allSortablePhotos.length });
     try {
-      const result = await runAutoSort(allSortablePhotos, (done, total) => setAutoSortProgress({ done, total }));
+      const result = await runAutoSort(allSortablePhotos, (done, total) => setAutoSortProgress({ done, total }), nextSensitivity);
       setAutoSortResult(result);
     } finally {
       setAutoSorting(false);
+    }
+  }
+
+  // Re-running the full detection pipeline just to change how aggressively duplicates/blur get
+  // treated is wasteful, but the classification thresholds live inside runAutoSort's single pass
+  // rather than being cached separately — keeping this simple for now over a bigger refactor to
+  // split "detect" from "decide." resorting (not autoSorting) drives its own loading state so the
+  // sensitivity buttons stay visible instead of the whole review screen disappearing.
+  async function handleSensitivityChange(next: Sensitivity) {
+    if (next === sensitivity || !autoSortResult) return;
+    setSensitivity(next);
+    setResorting(true);
+    try {
+      const result = await runAutoSort(allSortablePhotos, () => {}, next);
+      setAutoSortResult(result);
+    } finally {
+      setResorting(false);
     }
   }
 
@@ -233,49 +253,33 @@ export default function App() {
   async function handleConfirmAutoSort(choice: ConfirmAlbumChoice) {
     if (!autoSortResult) return;
     setConfirmingAutoSort(true);
+    const { keep, toDelete } = autoSortResult;
+    setSavingProgress({ done: 0, total: keep.length, photo: keep[0] ?? null });
     try {
-      const { keep, toDelete } = autoSortResult;
       setInbox((prev) => prev.filter((p) => !keep.some((k) => k.id === p.id) && !toDelete.some((d) => d.photo.id === p.id)));
 
       await Promise.all(toDelete.map((d) => updatePhotoStatus(d.photo.id, 'trashed')));
 
-      let toastMessage: string;
-      if (choice.type === 'perDay' || choice.type === 'perMonth') {
-        const groups = choice.type === 'perDay' ? groupPhotosByDay(keep) : groupPhotosByMonth(keep);
-        let lastAlbumId: string | null = null;
-        for (const group of groups) {
-          const created = await createAlbum(group.label);
-          lastAlbumId = created.id;
-          await Promise.all(
-            group.photos.map(async (p) => {
-              await updatePhotoStatus(p.id, 'kept');
-              await assignPhotoToAlbum(p.id, created.id);
-            }),
-          );
-        }
-        await refreshAlbums();
-        if (lastAlbumId) setActiveAlbumId(lastAlbumId);
-        const unit = choice.type === 'perDay' ? 'day' : 'month';
-        toastMessage = `Sorted! Saved ${keep.length} photos into ${groups.length} albums, one per ${unit} 📁`;
-      } else {
-        const albumName = choice.name;
-        let albumId: string | null = null;
-        if (albumName) {
-          const created = await createAlbum(albumName);
-          albumId = created.id;
-          await refreshAlbums();
-          setActiveAlbumId(created.id);
-        }
-        await Promise.all(
-          keep.map(async (p) => {
-            await updatePhotoStatus(p.id, 'kept');
-            if (albumId) await assignPhotoToAlbum(p.id, albumId);
-          }),
-        );
-        toastMessage = albumName
-          ? `Sorted! Saved ${keep.length} to "${albumName}" 📁`
-          : `Sorted! Kept ${keep.length}, deleted ${toDelete.length}.`;
+      const albumName = choice.name;
+      let albumId: string | null = null;
+      if (albumName) {
+        const created = await createAlbum(albumName);
+        albumId = created.id;
       }
+      let done = 0;
+      for (const p of keep) {
+        await updatePhotoStatus(p.id, 'kept');
+        if (albumId) await assignPhotoToAlbum(p.id, albumId);
+        done++;
+        setSavingProgress({ done, total: keep.length, photo: keep[done] ?? p });
+      }
+      if (albumId) {
+        await refreshAlbums();
+        setActiveAlbumId(albumId);
+      }
+      const toastMessage = albumName
+        ? `Sorted! Saved ${keep.length} to "${albumName}" 📁`
+        : `Sorted! Kept ${keep.length}, deleted ${toDelete.length}.`;
 
       refreshKeptWithoutAlbumCount();
       setAlbumToast(toastMessage);
@@ -283,6 +287,7 @@ export default function App() {
       setAutoSortResult(null);
     } finally {
       setConfirmingAutoSort(false);
+      setSavingProgress(null);
     }
   }
 
@@ -336,7 +341,7 @@ export default function App() {
 
   if (openAlbum) {
     return (
-      <div className="max-w-2xl mx-auto p-4 min-h-screen">
+      <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
         <AlbumGrid
           title={openAlbum.name}
           fetchPhotos={() => getPhotosByAlbum(openAlbum.id)}
@@ -353,7 +358,7 @@ export default function App() {
 
   if (showAllKept) {
     return (
-      <div className="max-w-2xl mx-auto p-4 min-h-screen">
+      <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
         <AlbumGrid
           title="All Kept Photos"
           fetchPhotos={getKeptPhotosWithoutAlbum}
@@ -370,7 +375,7 @@ export default function App() {
 
   if (openPerson) {
     return (
-      <div className="max-w-2xl mx-auto p-4 min-h-screen">
+      <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
         <PersonGrid
           person={openPerson}
           onBack={() => {
@@ -384,48 +389,57 @@ export default function App() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 min-h-screen flex flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 mb-4 pt-2">
-        <button
-          onClick={() => setView('landing')}
-          className="flex items-center gap-3 text-left shrink-0"
-          title="Back to home"
-        >
-          <Logo className="w-11 h-11 sm:w-12 sm:h-12" />
-          <div>
-            <h1
-              className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight leading-none whitespace-nowrap bg-clip-text text-transparent"
-              style={{ backgroundImage: 'linear-gradient(90deg, #EA7987, #C9505F)' }}
+    <div className="min-h-screen bg-[#F6F1E7] text-[#231F1B]">
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 pb-8 flex flex-col min-h-screen">
+        <header className="flex flex-wrap items-center justify-between gap-4 py-6 border-b border-black/5 mb-6">
+          <button onClick={() => setView('landing')} className="text-left shrink-0" title="Back to home">
+            <span className="font-serif italic text-2xl sm:text-3xl tracking-tight whitespace-nowrap">
+              Tidee Moments<span className="text-[#BB5133]">.</span>
+            </span>
+          </button>
+          <nav className="flex items-center gap-6 sm:gap-8 text-[15px] shrink-0">
+            <button
+              onClick={() => setTab('albums')}
+              className={`whitespace-nowrap transition-colors ${tab === 'albums' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
             >
-              tidee moments
-            </h1>
-            <p className="text-xs text-white whitespace-nowrap mt-1">Turn a photo pile into keepsakes ✨</p>
-          </div>
-        </button>
-        <nav className="flex gap-2 text-sm shrink-0">
-          <button
-            onClick={() => setTab('sort')}
-            className={`px-3 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all ${tab === 'sort' ? 'bg-rose-400 text-white shadow-md scale-105' : 'bg-white text-stone-500 border border-stone-200 hover:border-rose-300'}`}
-          >
-            Tidee up ({inbox.length})
-          </button>
-          <button
-            onClick={() => setTab('albums')}
-            className={`px-3 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all ${tab === 'albums' ? 'bg-rose-400 text-white shadow-md scale-105' : 'bg-white text-stone-500 border border-stone-200 hover:border-rose-300'}`}
-          >
-            Albums
-          </button>
-          <button
-            onClick={() => setTab('people')}
-            className={`px-3 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all ${tab === 'people' ? 'bg-rose-400 text-white shadow-md scale-105' : 'bg-white text-stone-500 border border-stone-200 hover:border-rose-300'}`}
-          >
-            People
-          </button>
-        </nav>
-      </header>
+              Albums
+            </button>
+            <button
+              onClick={() => setTab('sort')}
+              className={`whitespace-nowrap transition-colors ${tab === 'sort' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
+            >
+              Sort photos{inbox.length > 0 ? ` (${inbox.length})` : ''}
+            </button>
+            <button
+              onClick={() => setTab('people')}
+              className={`whitespace-nowrap transition-colors ${tab === 'people' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
+            >
+              People
+            </button>
+            <button
+              onClick={() => setView('landing')}
+              title="Back to home"
+              className="text-[#8A8177] hover:text-[#231F1B] transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10 17l5-5-5-5M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </nav>
+        </header>
 
       {tab === 'sort' && (
         <div className="flex flex-col flex-1 gap-4">
+          {activeSelection === null && (
+            <div className="mb-2">
+              <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-3">Bring in the whole camera roll.</h1>
+              <p className="text-[#7A7266] text-base sm:text-lg max-w-2xl leading-relaxed">
+                Hundreds or thousands at once is fine. Your photos are analysed right here on your device, and
+                nothing is uploaded anywhere — ever.
+              </p>
+            </div>
+          )}
           <UploadZone onFilesSelected={handleFilesSelected} />
 
           {activeSelection === null && (
@@ -440,30 +454,36 @@ export default function App() {
                 </button>
               )}
 
-              {autoSortResult ? (
+              {savingProgress ? (
+                <SavingScreen progress={savingProgress} />
+              ) : autoSortResult ? (
                 <AutoSortReview
                   keepPhotos={autoSortResult.keep}
                   deletePhotos={autoSortResult.toDelete}
+                  moments={autoSortResult.moments}
+                  sensitivity={sensitivity}
+                  onSensitivityChange={handleSensitivityChange}
+                  resorting={resorting}
                   onMove={handleMoveAutoSort}
                   onConfirm={handleConfirmAutoSort}
                   onCancel={handleCancelAutoSort}
                   confirming={confirmingAutoSort}
                 />
               ) : autoSorting ? (
-                <div className="flex flex-col items-center justify-center gap-3 text-stone-400 py-8">
+                <div className="flex flex-col items-center justify-center gap-3 text-[#8A8177] py-8">
                   <span className="text-4xl">✨</span>
-                  <p className="font-semibold">
+                  <p className="font-semibold text-[#231F1B]">
                     Sorting {autoSortProgress?.done ?? 0} of {autoSortProgress?.total ?? 0}…
                   </p>
-                  <div className="w-64 h-2 bg-stone-200 rounded-full overflow-hidden">
+                  <div className="w-64 h-2 bg-[#EFE9DD] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-rose-400 transition-all"
+                      className="h-full bg-[#BB5133] transition-all"
                       style={{
                         width: `${autoSortProgress ? (autoSortProgress.done / autoSortProgress.total) * 100 : 0}%`,
                       }}
                     />
                   </div>
-                  <p className="text-xs text-stone-400 max-w-sm text-center">
+                  <p className="text-xs text-[#A69C8E] max-w-sm text-center">
                     Blurry, closed-eyes, poor-quality, and duplicate shots get flagged automatically — all
                     on-device, no AI, no cost. You'll review both piles before anything is final.
                   </p>
@@ -584,7 +604,8 @@ export default function App() {
 
       {tab === 'albums' && (
         <div>
-          <div className="flex items-center gap-2 mb-4">
+          <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-6">Your albums.</h1>
+          <div className="flex items-center gap-2 mb-6">
             {creatingAlbum ? (
               <form
                 onSubmit={(e) => {
@@ -599,12 +620,12 @@ export default function App() {
                   value={newAlbumName}
                   onChange={(e) => setNewAlbumName(e.target.value)}
                   placeholder="Album name…"
-                  className="text-sm border border-stone-200 bg-white rounded-full px-4 py-2 text-stone-700 focus:outline-none focus:border-rose-300"
+                  className="text-sm border border-black/10 bg-white rounded-full px-4 py-2 text-[#231F1B] focus:outline-none focus:border-[#BB5133]/50"
                 />
                 <button
                   type="submit"
                   disabled={!newAlbumName.trim()}
-                  className="text-sm bg-stone-800 hover:bg-stone-900 text-white font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40"
+                  className="text-sm bg-[#231F1B] hover:bg-black text-white font-medium px-4 py-2 rounded-full transition-colors disabled:opacity-40"
                 >
                   Create
                 </button>
@@ -614,7 +635,7 @@ export default function App() {
                     setCreatingAlbum(false);
                     setNewAlbumName('');
                   }}
-                  className="text-sm text-stone-400 hover:underline px-2"
+                  className="text-sm text-[#A69C8E] hover:underline px-2"
                 >
                   Cancel
                 </button>
@@ -622,22 +643,22 @@ export default function App() {
             ) : (
               <button
                 onClick={() => setCreatingAlbum(true)}
-                className="text-sm bg-stone-800 hover:bg-stone-900 text-white font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md hover:scale-105 transition-all"
+                className="text-sm bg-[#231F1B] hover:bg-black text-white font-medium px-5 py-2.5 rounded-full transition-colors"
               >
-                ✨ New album
+                New album
               </button>
             )}
             {keptWithoutAlbumCount > 0 && (
               <button
                 onClick={() => setShowAllKept(true)}
-                className="text-sm bg-white border border-stone-200 text-stone-700 font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md hover:border-rose-300 transition-all"
+                className="text-sm bg-white border border-black/10 text-[#231F1B] font-medium px-5 py-2.5 rounded-full hover:bg-[#F6F1E7] transition-colors"
               >
-                📦 All Kept Photos ({keptWithoutAlbumCount})
+                All Kept Photos ({keptWithoutAlbumCount})
               </button>
             )}
           </div>
           {albums.length === 0 ? (
-            <p className="text-stone-400">No albums yet 🌱 Create one, or swipe up on a photo while tidying up.</p>
+            <p className="text-[#A69C8E]">No albums yet 🌱 Create one, or swipe up on a photo while tidying up.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {albums.map((a) => (
@@ -651,10 +672,11 @@ export default function App() {
       {tab === 'people' && <PeopleTab onOpenPerson={setOpenPerson} />}
 
       {albumToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-stone-800 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#231F1B] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
           {albumToast}
         </div>
       )}
+      </div>
     </div>
   );
 }

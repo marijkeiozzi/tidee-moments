@@ -109,30 +109,31 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
 
   return (
     <div>
+      <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-6">Your people.</h1>
       <button
         onClick={handleScan}
         disabled={scanning}
-        className="mb-4 text-sm bg-rose-400 hover:bg-rose-500 text-white font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-60"
+        className="mb-4 text-sm bg-[#231F1B] hover:bg-black text-white font-medium px-5 py-2.5 rounded-full transition-colors disabled:opacity-60"
       >
         {scanning
           ? progress
-            ? `🔍 Scanning… ${progress.done}/${progress.total}`
-            : '🔍 Loading face detection…'
+            ? `Scanning… ${progress.done}/${progress.total}`
+            : 'Loading face detection…'
           : people.length > 0
-            ? '🔍 Re-scan kept photos'
-            : '🔍 Find faces in your kept photos'}
+            ? 'Re-scan kept photos'
+            : 'Find faces in your kept photos'}
       </button>
 
-      <p className="text-xs text-stone-400 mb-4">
+      <p className="text-xs text-[#A69C8E] mb-4">
         Runs entirely on your device — no photo is ever sent anywhere for this. Scans photos you've already
         kept, not your whole upload pile.
       </p>
 
-      {error && <p className="text-xs text-red-500 mb-4">{error}</p>}
-      {lastScanSummary && !scanning && <p className="text-xs text-stone-400 mb-4">{lastScanSummary}</p>}
+      {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
+      {lastScanSummary && !scanning && <p className="text-xs text-[#A69C8E] mb-4">{lastScanSummary}</p>}
 
       {people.length === 0 && !scanning ? (
-        <p className="text-stone-400">
+        <p className="text-[#A69C8E]">
           No people found yet 🌱 Keep some photos while sorting, then scan to group them by who's in them.
         </p>
       ) : (
@@ -140,9 +141,9 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
           {people.map((person) => (
             <div
               key={person.id}
-              className="bg-white border border-stone-200 rounded-2xl overflow-hidden text-left hover:border-rose-300 hover:shadow-md transition-all"
+              className="bg-white border border-black/5 rounded-2xl overflow-hidden text-left hover:border-[#BB5133]/30 hover:shadow-md transition-all"
             >
-              <button onClick={() => onOpenPerson(person)} className="block w-full aspect-square bg-amber-100">
+              <button onClick={() => onOpenPerson(person)} className="block w-full aspect-square bg-[#EFE9DD]">
                 {thumbUrls[person.id] && (
                   <img src={thumbUrls[person.id]} alt="" className="w-full h-full object-cover" />
                 )}
@@ -154,9 +155,9 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
                   onBlur={(e) => handleRename(person.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   placeholder="Name this person…"
-                  className="w-full font-semibold text-stone-700 text-sm truncate outline-none focus:ring-2 focus:ring-rose-300 rounded px-0.5 -mx-0.5"
+                  className="w-full font-semibold text-[#231F1B] text-sm truncate outline-none focus:ring-2 focus:ring-[#BB5133]/30 rounded px-0.5 -mx-0.5"
                 />
-                <p className="text-xs text-stone-400">{person.photoIds.length} photos</p>
+                <p className="text-xs text-[#A69C8E]">{person.photoIds.length} photos</p>
               </div>
             </div>
           ))}

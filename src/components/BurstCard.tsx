@@ -94,28 +94,28 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
 
   return (
     <div className="flex flex-col w-full h-full rounded-2xl overflow-hidden bg-white shadow-lg select-none">
-      <div className="relative flex-1 min-h-0 bg-stone-100">
+      <div className="relative flex-1 min-h-0 bg-[#EFE9DD]">
         {urls[effectiveIndex] && (
           <img src={urls[effectiveIndex]} alt="" className="w-full h-full object-contain pointer-events-none" draggable={false} />
         )}
-        <div className="absolute top-3 left-3 bg-rose-400/90 text-white text-xs font-medium px-2 py-1 rounded-full shadow-sm">
+        <div className="absolute top-3 left-3 bg-[#BB5133]/90 text-white text-xs font-medium px-2 py-1 rounded-full shadow-sm">
           🎯 Burst of {photos.length}
         </div>
         {loading && (
-          <div className="absolute top-3 right-3 bg-rose-400/90 text-white text-xs font-medium px-2 py-1 rounded-full shadow-sm">
+          <div className="absolute top-3 right-3 bg-[#BB5133]/90 text-white text-xs font-medium px-2 py-1 rounded-full shadow-sm">
             ✨ Picking the best one…
           </div>
         )}
       </div>
 
-      <div className="shrink-0 border-t border-stone-200 bg-white p-3">
+      <div className="shrink-0 border-t border-black/5 bg-white p-3">
         <div className="flex gap-2 mb-3 overflow-x-auto" onPointerDown={(e) => e.stopPropagation()}>
           {urls.map((url, i) => (
             <button
               key={photos[i].id}
               onClick={() => setSelectedIndex(i)}
               className={`shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 ${
-                i === effectiveIndex ? 'border-rose-400' : 'border-transparent opacity-60'
+                i === effectiveIndex ? 'border-[#BB5133]' : 'border-transparent opacity-60'
               }`}
             >
               <img src={url} alt="" className="w-full h-full object-cover" />
@@ -124,10 +124,10 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
         </div>
 
         {!loading && !failed && reason && (
-          <p className="text-xs text-stone-500 mb-2 leading-snug">✨ {reason}</p>
+          <p className="text-xs text-[#8A8177] mb-2 leading-snug">✨ {reason}</p>
         )}
         {!loading && failed && (
-          <p className="text-xs text-stone-400 mb-2">
+          <p className="text-xs text-[#A69C8E] mb-2">
             Couldn't automatically pick a favorite — showing the first shot. Tap a thumbnail to choose a different one.
           </p>
         )}
@@ -139,7 +139,7 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
         >
           <button
             onClick={handleConfirm}
-            className="bg-rose-400 hover:bg-rose-500 text-white font-semibold text-sm py-2 rounded-full shadow-sm transition-colors"
+            className="bg-[#231F1B] hover:bg-black text-white font-semibold text-sm py-2 rounded-full shadow-sm transition-colors"
           >
             ❤️ Keep this one, skip the rest
           </button>
@@ -159,7 +159,7 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
           </div>
           <button
             onClick={onReviewIndividually}
-            className="text-xs text-stone-400 hover:text-stone-600 hover:underline py-1"
+            className="text-xs text-[#A69C8E] hover:text-[#231F1B] hover:underline py-1"
           >
             Review each photo individually instead
           </button>

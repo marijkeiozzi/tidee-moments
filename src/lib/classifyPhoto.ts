@@ -55,30 +55,45 @@ export interface Classification {
   scores: ClassifyScores;
 }
 
-// Well below the normal ~120 "soft focus" blur threshold — this is heavy motion/focus blur that
-// a person would call "not really usable," not just an imperfect shot.
-const SEVERE_BLUR_SHARPNESS = 45;
-// Near-zero edge detail — a genuinely featureless frame (pocket shot, lens cap), not just a dim
-// room or a moody low-light photo (which still has real detail once you look).
-const BLANK_SHARPNESS = 6;
-// scorePhotoQuality() points. Two near-identical shots can differ by 200+ points just from one
-// having eyes open vs closed. Used only to decide the wording/confidence of a duplicate
-// deletion, never to gate whether one happens at all — see DUPLICATE_HAMMING_CEILING below.
-const MEANINGFUL_DUPLICATE_QUALITY_GAP = 50;
-// Upper bound on the Hamming distance autoSort.ts will ever attach to a DuplicateContext — the
-// tight any-time-gap pass caps at 8, the time-bounded burst pass at 32 (posed multi-shot
-// sequences, especially close-up handheld selfies or small in-frame changes like eyes closing,
-// have real pose/arm/phone movement between frames, not just noise). Both are already evidence a
-// photo is redundant with the one being kept, so classifyPhoto trusts whatever distance it's
-// handed rather than re-gating it stricter than autoSort already did.
-const DUPLICATE_HAMMING_CEILING = 32;
-// sceneClassification.ts's own isUtilityPhoto flag trips at 35% confidence — tuned for a much
-// lower-stakes use (excluding a photo from winning a duplicate group). A NICU monitor, a
-// medical device, or a car dashboard photographed up close can easily read as "desk" or
-// "printer" at 40-55% confidence from MobileNet, and that's real evidence-of-a-memory, not
-// noise — nowhere near strong enough to delete outright. Require real confidence before a scene
-// label alone becomes a deletion trigger.
-const UTILITY_DELETE_CONFIDENCE = 0.6;
+// How willing the classifier is to call something a duplicate/blur/reference-shot worth
+// deleting. Exposed to the user as "Just the best" / "Balanced" / "Generous" — the underlying
+// evidence rules never change (still only these five categories, still never on aesthetics
+// alone), only how far each one reaches. "strict" is the most aggressive at decluttering,
+// "generous" is closest to "when in doubt, keep."
+export type Sensitivity = 'strict' | 'balanced' | 'generous';
+
+interface Thresholds {
+  // Below this sharpness, a photo is "too blurry to make out" — see rule 4 below.
+  severeBlurSharpness: number;
+  // Near-zero edge detail — a genuinely featureless frame (pocket shot, lens cap), not just a
+  // dim room or a moody low-light photo (which still has real detail once you look).
+  blankSharpness: number;
+  // scorePhotoQuality() points. Two near-identical shots can differ by 200+ points just from one
+  // having eyes open vs closed. Used only to decide the wording/confidence of a duplicate
+  // deletion, never to gate whether one happens at all — see duplicateHammingCeiling below.
+  meaningfulDuplicateGap: number;
+  // Upper bound on the Hamming distance a DuplicateContext is trusted at — autoSort.ts always
+  // attaches the widest possible relationship (up to 32 for a time-bounded burst), and this is
+  // what decides, per sensitivity level, how much of that counts as "the same shot" worth
+  // deleting down to one copy.
+  duplicateHammingCeiling: number;
+  // sceneClassification.ts's own isUtilityPhoto flag trips at 35% confidence — tuned for a much
+  // lower-stakes use (excluding a photo from winning a duplicate group). Require real confidence
+  // before a scene label alone becomes a deletion trigger.
+  utilityDeleteConfidence: number;
+}
+
+const THRESHOLDS: Record<Sensitivity, Thresholds> = {
+  // "Just the best" — most aggressive declutter: a fairly loose bar for "beyond recognition"
+  // blur, and treats a burst photo as redundant even with real pose/arm movement between frames.
+  strict: { severeBlurSharpness: 45, blankSharpness: 6, meaningfulDuplicateGap: 50, duplicateHammingCeiling: 32, utilityDeleteConfidence: 0.6 },
+  // Middle ground — still catches obvious duplicates and unusable shots, less eager on borderline
+  // ones.
+  balanced: { severeBlurSharpness: 32, blankSharpness: 6, meaningfulDuplicateGap: 65, duplicateHammingCeiling: 20, utilityDeleteConfidence: 0.65 },
+  // "Generous" — when in doubt, keep it. Only near-pixel-identical duplicates and truly
+  // unusable frames get removed; anything with real in-frame variation stays.
+  generous: { severeBlurSharpness: 22, blankSharpness: 6, meaningfulDuplicateGap: 90, duplicateHammingCeiling: 8, utilityDeleteConfidence: 0.7 },
+};
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
@@ -104,7 +119,15 @@ function exposureScoreOf(s: ClassifySignals): number {
   return 0.3; // too-dark / overexposed, but not necessarily blank
 }
 
-export function classifyPhoto(s: ClassifySignals, dup?: DuplicateContext): Classification {
+export function classifyPhoto(s: ClassifySignals, dup?: DuplicateContext, sensitivity: Sensitivity = 'balanced'): Classification {
+  const {
+    severeBlurSharpness: SEVERE_BLUR_SHARPNESS,
+    blankSharpness: BLANK_SHARPNESS,
+    meaningfulDuplicateGap: MEANINGFUL_DUPLICATE_QUALITY_GAP,
+    duplicateHammingCeiling: DUPLICATE_HAMMING_CEILING,
+    utilityDeleteConfidence: UTILITY_DELETE_CONFIDENCE,
+  } = THRESHOLDS[sensitivity];
+
   const qualityScore = blurScoreOf(s.sharpness) * 0.5 + exposureScoreOf(s) * 0.5;
   const peopleScore = peopleScoreOf(s);
   const uniquenessScore = dup ? clamp01(dup.hammingDistance / DUPLICATE_HAMMING_CEILING) : 1;

@@ -1,5 +1,3 @@
-import Logo from './Logo';
-
 interface LandingPageProps {
   onGetStarted: () => void;
 }
@@ -96,96 +94,142 @@ const FAQS = [
   },
 ];
 
+// Warm gradient "photos" for the hero collage — abstract, no real photo assets needed, tuned to
+// evoke beach/golden-hour/cozy-indoor family moments in the same warm palette as the page itself.
+function PolaroidPhoto({ gradient, className }: { gradient: string; className?: string }) {
+  return (
+    <div className={`absolute bg-white p-2 pb-8 rounded-sm shadow-xl ${className ?? ''}`}>
+      <div className="w-full h-full rounded-[2px]" style={{ background: gradient }} />
+    </div>
+  );
+}
+
 export default function LandingPage({ onGetStarted }: LandingPageProps) {
   return (
-    <div className="min-h-screen">
-      <div className="max-w-3xl mx-auto px-4 pt-10 pb-16">
-        <header className="flex items-center gap-3 mb-10">
-          <Logo className="w-11 h-11 sm:w-12 sm:h-12" />
-          <div>
-            <span
-              className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight leading-none bg-clip-text text-transparent"
-              style={{ backgroundImage: 'linear-gradient(90deg, #EA7987, #C9505F)' }}
-            >
-              tidee moments
-            </span>
-            <p className="text-xs text-white mt-1">Turn a photo pile into keepsakes ✨</p>
-          </div>
-        </header>
-
-        <section className="text-center mb-12">
-          <p className="text-stone-400 max-w-xl mx-auto mb-6 mt-2">
-            Tidee Moments helps busy parents blaze through thousands of camera-roll photos in minutes —
-            swipe to tidee up, let free on-device checks flag the blurry ones, and save what matters into
-            albums you can share.
-          </p>
+    <div className="min-h-screen bg-[#F6F1E7] text-[#231F1B]">
+      <div className="max-w-6xl mx-auto px-6 sm:px-10">
+        <header className="flex items-center justify-between py-6 border-b border-black/5">
+          <span className="font-serif italic text-2xl sm:text-3xl tracking-tight">
+            Tidee Moments<span className="text-[#BB5133]">.</span>
+          </span>
+          <nav className="hidden sm:flex items-center gap-8 text-[15px]">
+            <button onClick={onGetStarted} className="text-[#231F1B] font-medium hover:opacity-70 transition-opacity">
+              Albums
+            </button>
+            <button onClick={onGetStarted} className="text-[#8A8177] hover:text-[#231F1B] transition-colors">
+              Sort photos
+            </button>
+          </nav>
           <button
             onClick={onGetStarted}
-            className="bg-rose-400 hover:bg-rose-500 text-white font-semibold text-lg px-8 py-3 rounded-full shadow-md hover:shadow-lg hover:scale-105 transition-all"
+            className="bg-[#231F1B] text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-black transition-colors"
           >
-            Tidee up for free →
+            Get started
           </button>
-          <p className="text-xs text-stone-500 mt-3">No account needed · Free to start</p>
-        </section>
+        </header>
 
+        <section className="grid lg:grid-cols-2 gap-12 items-center py-16 sm:py-24">
+          <div>
+            <p className="text-[#BB5133] text-xs font-semibold tracking-[0.2em] uppercase mb-5">
+              For parents with full camera rolls
+            </p>
+            <h1 className="font-serif text-5xl sm:text-6xl leading-[1.05] mb-6">
+              Thousands of
+              <br />
+              photos.
+              <br />
+              <span className="italic text-[#BB5133]">Only the keepers.</span>
+            </h1>
+            <p className="text-[#5B5349] text-lg leading-relaxed max-w-md mb-8">
+              Drop in the whole camera roll. We'll set aside the blurry shots and duplicates, and pick the best of
+              every moment and every day, so your albums come together in minutes.
+            </p>
+            <button
+              onClick={onGetStarted}
+              className="inline-flex items-center gap-2 bg-[#231F1B] text-white font-medium text-[15px] px-7 py-4 rounded-full hover:bg-black hover:scale-[1.02] transition-all"
+            >
+              Start sorting <span aria-hidden>→</span>
+            </button>
+          </div>
+
+          <div className="relative h-[420px] hidden lg:block">
+            <PolaroidPhoto
+              gradient="linear-gradient(135deg, #F4D9A8 0%, #E8B77C 45%, #D99A6C 100%)"
+              className="w-56 h-72 left-4 top-0 -rotate-6"
+            />
+            <PolaroidPhoto
+              gradient="linear-gradient(135deg, #E7CCB8 0%, #C99A7C 55%, #8A6350 100%)"
+              className="w-56 h-72 right-0 top-6 rotate-6"
+            />
+            <PolaroidPhoto
+              gradient="linear-gradient(160deg, #EFE3C9 0%, #D9C79A 40%, #A8C08A 75%, #7FA06B 100%)"
+              className="w-64 h-80 left-24 top-32 -rotate-3"
+            />
+          </div>
+        </section>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-6 sm:px-10 pb-16">
         <section className="mb-14">
-          <h2 className="text-center font-bold text-stone-100 text-xl mb-6">How it works</h2>
+          <h2 className="text-center font-serif text-2xl mb-8">How it works</h2>
           <div className="grid sm:grid-cols-3 gap-4">
             {STEPS.map((s) => (
-              <div key={s.n} className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
+              <div key={s.n} className="bg-white border border-black/5 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="w-7 h-7 shrink-0 rounded-full bg-rose-400 text-white text-sm font-bold flex items-center justify-center">
+                  <span className="w-7 h-7 shrink-0 rounded-full bg-[#BB5133] text-white text-sm font-bold flex items-center justify-center">
                     {s.n}
                   </span>
                   <span className="text-2xl">{s.emoji}</span>
                 </div>
-                <h3 className="font-bold text-stone-800 mb-1">{s.title}</h3>
-                <p className="text-sm text-stone-500 leading-relaxed">{s.body}</p>
+                <h3 className="font-bold text-[#231F1B] mb-1">{s.title}</h3>
+                <p className="text-sm text-[#7A7266] leading-relaxed">{s.body}</p>
               </div>
             ))}
           </div>
         </section>
 
         <section className="mb-14">
-          <h2 className="text-center font-bold text-stone-100 text-xl mb-1">Everything runs on your device</h2>
-          <p className="text-center text-sm text-stone-400 mb-6">No AI, no uploads, no subscription — just free, local checks doing the tedious part for you.</p>
+          <h2 className="text-center font-serif text-2xl mb-1">Everything runs on your device</h2>
+          <p className="text-center text-sm text-[#8A8177] mb-8">
+            No AI, no uploads, no subscription — just free, local checks doing the tedious part for you.
+          </p>
           <div className="grid sm:grid-cols-3 gap-4">
             {FEATURES.map((f) => (
-              <div key={f.title} className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
+              <div key={f.title} className="bg-white border border-black/5 rounded-2xl p-5 shadow-sm">
                 <span className="text-2xl">{f.emoji}</span>
-                <h3 className="font-bold text-stone-800 mt-2 mb-1">{f.title}</h3>
-                <p className="text-sm text-stone-500 leading-relaxed">{f.body}</p>
+                <h3 className="font-bold text-[#231F1B] mt-2 mb-1">{f.title}</h3>
+                <p className="text-sm text-[#7A7266] leading-relaxed">{f.body}</p>
               </div>
             ))}
           </div>
         </section>
 
         <section className="mb-14">
-          <h2 className="text-center font-bold text-stone-100 text-xl mb-6">Questions parents actually ask</h2>
+          <h2 className="text-center font-serif text-2xl mb-8">Questions parents actually ask</h2>
           <div className="max-w-xl mx-auto flex flex-col gap-3">
             {FAQS.map((f) => (
-              <details key={f.q} className="bg-white border border-stone-200 rounded-2xl p-4 group">
-                <summary className="font-semibold text-stone-700 cursor-pointer list-none flex items-center justify-between">
+              <details key={f.q} className="bg-white border border-black/5 rounded-2xl p-4 group">
+                <summary className="font-semibold text-[#231F1B] cursor-pointer list-none flex items-center justify-between">
                   {f.q}
-                  <span className="text-rose-300 group-open:rotate-45 transition-transform text-xl leading-none">+</span>
+                  <span className="text-[#BB5133] group-open:rotate-45 transition-transform text-xl leading-none">+</span>
                 </summary>
-                <p className="text-sm text-stone-500 mt-2 leading-relaxed">{f.a}</p>
+                <p className="text-sm text-[#7A7266] mt-2 leading-relaxed">{f.a}</p>
               </details>
             ))}
           </div>
         </section>
 
-        <section className="text-center bg-gradient-to-br from-rose-50 via-white to-rose-50 border border-stone-200 rounded-2xl p-8">
-          <h2 className="font-bold text-stone-800 text-xl mb-2">Ready to tidy up your memories?</h2>
-          <p className="text-sm text-stone-500 mb-5">
-            Built for busy parents, grandparents preserving family memories, and anyone with a camera roll
-            they've been meaning to tidee up for years.
+        <section className="text-center bg-white border border-black/5 rounded-2xl p-10">
+          <h2 className="font-serif text-2xl mb-2">Ready to tidy up your memories?</h2>
+          <p className="text-sm text-[#7A7266] mb-6 max-w-md mx-auto">
+            Built for busy parents, grandparents preserving family memories, and anyone with a camera roll they've
+            been meaning to tidee up for years.
           </p>
           <button
             onClick={onGetStarted}
-            className="bg-rose-400 hover:bg-rose-500 text-white font-semibold px-6 py-2.5 rounded-full shadow-sm hover:shadow-md hover:scale-105 transition-all"
+            className="inline-flex items-center gap-2 bg-[#231F1B] text-white font-medium px-7 py-3 rounded-full hover:bg-black hover:scale-[1.02] transition-all"
           >
-            Tidee up for free →
+            Start sorting <span aria-hidden>→</span>
           </button>
         </section>
       </div>

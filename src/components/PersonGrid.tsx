@@ -89,7 +89,7 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <button onClick={onBack} className="text-rose-400 font-medium hover:underline">
+        <button onClick={onBack} className="text-[#BB5133] font-medium hover:underline">
           ← Back
         </button>
         <input
@@ -97,21 +97,21 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={handleNameBlur}
-          className="text-lg font-bold text-stone-100 text-center bg-transparent border-b border-transparent hover:border-stone-600 focus:border-rose-300 outline-none"
+          className="text-lg font-bold text-[#231F1B] text-center bg-transparent border-b border-transparent hover:border-black/20 focus:border-[#BB5133]/50 outline-none"
         />
         <button
           onClick={handleSharePage}
           disabled={buildingPage || photos.length === 0}
-          className="text-sm bg-rose-400 hover:bg-rose-500 text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40"
+          className="text-sm bg-[#231F1B] hover:bg-black text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40"
         >
           {buildingPage ? 'Building…' : '📤 Share as a page'}
         </button>
       </div>
 
-      <p className="text-xs text-stone-400 mb-4">Tap the name above to rename this person.</p>
+      <p className="text-xs text-[#A69C8E] mb-4">Tap the name above to rename this person.</p>
 
       {photos.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4 bg-white border border-stone-200 rounded-2xl p-3">
+        <div className="flex flex-wrap items-center gap-2 mb-4 bg-white border border-black/5 rounded-2xl p-3">
           {creatingAlbum ? (
             <form
               onSubmit={(e) => {
@@ -126,31 +126,31 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
                 value={newAlbumName}
                 onChange={(e) => setNewAlbumName(e.target.value)}
                 placeholder="Album name…"
-                className="text-sm border border-stone-200 bg-white rounded-full px-3 py-1.5 text-stone-700 focus:outline-none focus:border-rose-300"
+                className="text-sm border border-black/5 bg-white rounded-full px-3 py-1.5 text-[#231F1B] focus:outline-none focus:border-[#BB5133]/50"
               />
               <button
                 type="submit"
                 disabled={!newAlbumName.trim()}
-                className="text-sm bg-stone-800 hover:bg-stone-900 text-white font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
+                className="text-sm bg-[#231F1B] hover:bg-black text-white font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
               >
                 Create
               </button>
               <button
                 type="button"
                 onClick={() => setCreatingAlbum(false)}
-                className="text-sm text-stone-500 hover:underline"
+                className="text-sm text-[#8A8177] hover:underline"
               >
                 Cancel
               </button>
             </form>
           ) : (
             <>
-              <span className="text-sm text-stone-600">Add all {photos.length} photos to:</span>
+              <span className="text-sm text-[#8A8177]">Add all {photos.length} photos to:</span>
               {albums.length > 0 && (
                 <select
                   value={selectedAlbumId}
                   onChange={(e) => setSelectedAlbumId(e.target.value)}
-                  className="text-sm border border-stone-200 bg-white rounded-lg px-2 py-1.5 text-stone-700"
+                  className="text-sm border border-black/5 bg-white rounded-lg px-2 py-1.5 text-[#231F1B]"
                 >
                   {albums.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -161,14 +161,14 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
               )}
               <button
                 onClick={() => setCreatingAlbum(true)}
-                className="text-sm text-rose-400 hover:underline"
+                className="text-sm text-[#BB5133] hover:underline"
               >
                 + New album
               </button>
               <button
                 onClick={handleAddAllToAlbum}
                 disabled={!selectedAlbumId || addingToAlbum}
-                className="text-sm bg-rose-400 hover:bg-rose-500 text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40 ml-auto"
+                className="text-sm bg-[#231F1B] hover:bg-black text-white font-semibold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-40 ml-auto"
               >
                 {addingToAlbum ? 'Adding…' : '📁 Add all'}
               </button>
@@ -178,7 +178,7 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
       )}
 
       {photos.length === 0 ? (
-        <p className="text-stone-400">No photos found for this person.</p>
+        <p className="text-[#A69C8E]">No photos found for this person.</p>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
           {photos.map((p) => (
@@ -193,7 +193,7 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-stone-800 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#231F1B] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
           {toast}
         </div>
       )}

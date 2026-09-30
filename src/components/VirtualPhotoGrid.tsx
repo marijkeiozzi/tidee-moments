@@ -143,7 +143,7 @@ export default function VirtualPhotoGrid({
     <div className="flex flex-col gap-6">
       {groups.map((group) => (
         <div key={group.key}>
-          <h3 className="text-sm font-semibold text-stone-300 mb-2">
+          <h3 className="text-sm font-semibold text-[#8A8177] mb-2">
             {group.label} <span className="text-stone-500 font-normal">· {group.photos.length}</span>
           </h3>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">

@@ -36,9 +36,9 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
   }, [album.id]);
 
   return (
-    <div className="relative bg-white border border-stone-200 rounded-2xl overflow-hidden hover:border-rose-300 hover:shadow-md hover:-translate-y-0.5 transition-all">
+    <div className="relative bg-white border border-black/5 rounded-2xl overflow-hidden hover:border-[#BB5133]/30 hover:shadow-md hover:-translate-y-0.5 transition-all">
       <button onClick={onOpen} className="w-full text-left">
-        <div className="aspect-square bg-stone-100 flex items-center justify-center">
+        <div className="aspect-square bg-[#EFE9DD] flex items-center justify-center">
           {coverUrl ? (
             <img src={coverUrl} alt="" className="w-full h-full object-cover" />
           ) : (
@@ -46,8 +46,8 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
           )}
         </div>
         <div className="p-3">
-          <p className="font-semibold text-stone-700 text-sm truncate">{album.name}</p>
-          <p className="text-xs text-stone-400">{count === null ? '…' : `${count} photo${count === 1 ? '' : 's'}`}</p>
+          <p className="font-semibold text-[#231F1B] text-sm truncate">{album.name}</p>
+          <p className="text-xs text-[#A69C8E]">{count === null ? '…' : `${count} photo${count === 1 ? '' : 's'}`}</p>
         </div>
       </button>
       <button
@@ -56,7 +56,7 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
           onDelete();
         }}
         title="Delete album (photos stay — they just move to All Kept Photos)"
-        className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-white/90 text-stone-400 hover:text-red-500 hover:bg-red-50 flex items-center justify-center shadow-sm transition-colors"
+        className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-white/90 text-[#A69C8E] hover:text-red-500 hover:bg-red-50 flex items-center justify-center shadow-sm transition-colors"
       >
         ✕
       </button>

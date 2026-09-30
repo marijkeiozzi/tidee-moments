@@ -24,8 +24,8 @@ export default function SessionList({
   if (sessions.length === 0 && screenshotCount === 0) {
     return (
       <div className="flex flex-col items-start gap-2">
-        <p className="text-stone-400">Upload some photos above to get started 🌱</p>
-        <button onClick={onGoToAlbums} className="text-sm text-rose-400 font-medium hover:underline">
+        <p className="text-[#A69C8E]">Upload some photos above to get started 🌱</p>
+        <button onClick={onGoToAlbums} className="text-sm text-[#BB5133] font-medium hover:underline">
           📁 Or view photos you've already sorted →
         </button>
       </div>
@@ -35,11 +35,11 @@ export default function SessionList({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-stone-500">
+        <p className="text-sm text-[#8A8177]">
           {sessions.length} bundle{sessions.length === 1 ? '' : 's'} to tidee up
         </p>
         {sessions.length > 1 && (
-          <button onClick={onSortAll} className="text-xs text-rose-400 font-medium hover:underline">
+          <button onClick={onSortAll} className="text-xs text-[#BB5133] font-medium hover:underline">
             Tidee up everything at once
           </button>
         )}
@@ -90,7 +90,7 @@ function BundleCard({ photo, title, subtitle, muted, onClick }: BundleCardProps)
         <img src={url} alt="" className="absolute inset-0 w-full h-full object-cover" />
       ) : (
         <div
-          className={`absolute inset-0 ${muted ? 'bg-stone-200' : 'bg-gradient-to-br from-rose-100 to-rose-100'} flex items-center justify-center text-4xl`}
+          className={`absolute inset-0 ${muted ? 'bg-[#EFE9DD]' : 'bg-gradient-to-br from-[#F6DFCF] to-[#F6DFCF]'} flex items-center justify-center text-4xl`}
         >
           {muted ? '📱' : '📷'}
         </div>
@@ -100,7 +100,7 @@ function BundleCard({ photo, title, subtitle, muted, onClick }: BundleCardProps)
         <p className="text-white font-semibold text-sm leading-tight drop-shadow-sm">{title}</p>
         <p className="text-white/85 text-xs">{subtitle}</p>
       </div>
-      <div className="absolute inset-0 ring-0 group-hover:ring-4 ring-rose-300/60 rounded-2xl transition-all" />
+      <div className="absolute inset-0 ring-0 group-hover:ring-4 ring-[#BB5133]/40 rounded-2xl transition-all" />
     </button>
   );
 }

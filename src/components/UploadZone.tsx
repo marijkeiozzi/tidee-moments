@@ -15,6 +15,7 @@ const PROGRESS_STEP = 10;
 
 export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
 
@@ -119,7 +120,7 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
   return (
     <div>
       <div
-        className="border-2 border-dashed border-rose-300 bg-white rounded-2xl p-5 text-center cursor-pointer hover:border-rose-400 hover:bg-rose-50 transition-colors"
+        className="border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-3xl px-6 py-16 sm:py-20 text-center cursor-pointer hover:border-[#BB5133]/40 transition-colors"
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -128,27 +129,54 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
         }}
       >
         {processing ? (
-          <div className="w-7 h-7 mx-auto mb-2 rounded-full border-4 border-rose-200 border-t-rose-400 animate-spin" />
+          <div className="w-9 h-9 mx-auto mb-5 rounded-full border-4 border-[#EFDFC8] border-t-[#BB5133] animate-spin" />
         ) : (
-          <div className="text-2xl mb-1">🖼️</div>
+          <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-[#F6DFCF] flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#BB5133" strokeWidth="1.8">
+              <rect x="3" y="3" width="14" height="14" rx="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="8" cy="8" r="1.4" fill="#BB5133" stroke="none" />
+              <path d="M3 14l4-4 3 3 4-5 3 3.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M18 15v6M15 18h6" strokeLinecap="round" />
+            </svg>
+          </div>
         )}
         {processing ? (
-          <p className="text-stone-500 font-medium">{status ?? 'Reading your photos…'}</p>
+          <p className="text-[#5B5349] font-medium">{status ?? 'Reading your photos…'}</p>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                inputRef.current?.click();
-              }}
-              className="text-sm font-semibold bg-rose-400 hover:bg-rose-500 text-white px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all mb-1.5"
-            >
-              📁 Choose photos
-            </button>
-            <p className="text-stone-400 text-xs">or drag and drop them here</p>
-            <p className="text-stone-300 text-xs mt-1">
-              Uploading a big batch (100+ at once)? Use "Choose photos" — dragging that many at
+            <h3 className="font-serif text-2xl sm:text-3xl mb-2">Drop photos here</h3>
+            <p className="text-[#8A8177] text-sm mb-6">JPEG, PNG or WebP. HEIC photos work in Safari.</p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  inputRef.current?.click();
+                }}
+                className="text-sm font-semibold bg-[#231F1B] hover:bg-black text-white px-6 py-3 rounded-full transition-colors"
+              >
+                Choose photos
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  folderInputRef.current?.click();
+                }}
+                className="inline-flex items-center gap-2 text-sm font-semibold bg-white hover:bg-[#F6F1E7] text-[#231F1B] border border-black/10 px-6 py-3 rounded-full transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path
+                    d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Choose a folder
+              </button>
+            </div>
+            <p className="text-[#A69C8E] text-xs mt-6 max-w-sm mx-auto">
+              Uploading a big batch (100+ at once)? Use "Choose photos" or "Choose a folder" — dragging that many at
               once can silently drop some, since browsers cap how many files a single drag can carry.
             </p>
           </>
@@ -164,9 +192,34 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
             e.target.value = '';
           }}
         />
+        <input
+          ref={folderInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          // @ts-expect-error non-standard attribute, supported by Chrome/Edge/Safari for folder picking
+          webkitdirectory=""
+          className="hidden"
+          onChange={(e) => {
+            handleFiles(Array.from(e.target.files || []));
+            e.target.value = '';
+          }}
+        />
       </div>
 
-      {!processing && status && <p className="text-xs text-stone-400 mt-2">{status}</p>}
+      {!processing && status && <p className="text-xs text-[#8A8177] mt-3">{status}</p>}
+
+      <p className="flex items-center gap-2 text-xs text-[#A69C8E] mt-4">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+          <path
+            d="M12 2 4 5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V5l-8-3Z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path d="m9 12 2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Nothing is ever uploaded — every photo stays on this device.
+      </p>
     </div>
   );
 }
