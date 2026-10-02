@@ -1,6 +1,5 @@
 import type { Photo } from '../db/indexedDb';
-import { detectBlur } from './blurDetection';
-import { detectClosedEyes } from './eyesClosed';
+import { analyzePhoto, qualitySignalsOf } from './photoAnalysis';
 import { scorePhotoQuality } from './photoScore';
 
 // Scoring every photo in a big album would be slow for something as lightweight as picking a
@@ -18,18 +17,8 @@ export async function pickCoverPhoto(photos: Photo[]): Promise<Photo | null> {
   const scored = await Promise.all(
     sample.map(async (photo) => {
       try {
-        const [blur, face] = await Promise.all([
-          detectBlur(photo.blob).catch(() => ({ isBlurry: false, sharpness: 0 })),
-          detectClosedEyes(photo.blob).catch(() => ({
-            eyesClosed: false,
-            facingAway: false,
-            faceCount: 0,
-            openEyesFraction: 1,
-            smileScore: 0,
-            maxFaceArea: 0,
-          })),
-        ]);
-        return { photo, score: scorePhotoQuality({ sharpness: blur.sharpness, ...face }) };
+        const analysis = await analyzePhoto(photo.blob, { fingerprint: false });
+        return { photo, score: scorePhotoQuality(qualitySignalsOf(analysis)) };
       } catch {
         return { photo, score: 0 };
       }

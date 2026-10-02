@@ -16,6 +16,7 @@ import {
   deleteAlbum,
   getAllAlbums,
   getKeptPhotosWithoutAlbum,
+  getLibraryFingerprints,
   getPhotosByAlbum,
   getPhotosByStatus,
   setPhotoNote,
@@ -204,7 +205,13 @@ export default function App() {
     setAutoSorting(true);
     setAutoSortProgress({ done: 0, total: allSortablePhotos.length });
     try {
-      const result = await runAutoSort(allSortablePhotos, (done, total) => setAutoSortProgress({ done, total }), nextSensitivity);
+      const library = await getLibraryFingerprints();
+      const result = await runAutoSort(
+        allSortablePhotos,
+        (done, total) => setAutoSortProgress({ done, total }),
+        nextSensitivity,
+        library,
+      );
       setAutoSortResult(result);
     } finally {
       setAutoSorting(false);
@@ -221,7 +228,8 @@ export default function App() {
     setSensitivity(next);
     setResorting(true);
     try {
-      const result = await runAutoSort(allSortablePhotos, () => {}, next);
+      const library = await getLibraryFingerprints();
+      const result = await runAutoSort(allSortablePhotos, () => {}, next, library);
       setAutoSortResult(result);
     } finally {
       setResorting(false);
@@ -248,14 +256,14 @@ export default function App() {
       const toDelete = prev.toDelete.filter((d) => d.photo.id !== photoId);
       if (to === 'keep') keep.push(photo);
       else toDelete.push({ photo, reason: 'Moved to delete by you', evidence: 'You moved this photo to the delete pile.' });
-      return { keep, toDelete };
+      return { ...prev, keep, toDelete };
     });
   }
 
   async function handleConfirmAutoSort(choice: ConfirmAlbumChoice) {
     if (!autoSortResult) return;
     setConfirmingAutoSort(true);
-    const { keep, toDelete } = autoSortResult;
+    const { keep, toDelete, fingerprints } = autoSortResult;
     setSavingProgress({ done: 0, total: keep.length, photo: keep[0] ?? null });
     try {
       setInbox((prev) => prev.filter((p) => !keep.some((k) => k.id === p.id) && !toDelete.some((d) => d.photo.id === p.id)));
@@ -270,7 +278,7 @@ export default function App() {
       }
       let done = 0;
       for (const p of keep) {
-        await updatePhotoStatus(p.id, 'kept');
+        await updatePhotoStatus(p.id, 'kept', fingerprints.get(p.id));
         if (albumId) await assignPhotoToAlbum(p.id, albumId);
         done++;
         setSavingProgress({ done, total: keep.length, photo: keep[done] ?? p });

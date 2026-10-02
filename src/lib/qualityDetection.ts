@@ -13,8 +13,10 @@ export interface QualityResult {
   reason?: 'low-resolution' | 'too-dark' | 'overexposed';
 }
 
-export async function detectLowQuality(blob: Blob): Promise<QualityResult> {
-  const bitmap = await createImageBitmap(blob);
+// Accepts an already-decoded bitmap too (photoAnalysis.ts decodes once and shares it) — this
+// takes its own copy and closes that, never the caller's.
+export async function detectLowQuality(source: Blob | ImageBitmap): Promise<QualityResult> {
+  const bitmap = await createImageBitmap(source);
   try {
     if (bitmap.width < MIN_DIMENSION || bitmap.height < MIN_DIMENSION) {
       return { isLowQuality: true, reason: 'low-resolution' };

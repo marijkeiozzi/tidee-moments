@@ -1,16 +1,27 @@
 import type { Photo } from '../db/indexedDb';
-import { detectBlur } from './blurDetection';
-import { detectClosedEyes } from './eyesClosed';
-import { detectLowQuality } from './qualityDetection';
-import { computeImageHash, findDuplicateGroups, hammingDistance } from './duplicateDetection';
+import { findDuplicateGroups, hammingDistance, thumbDifference } from './duplicateDetection';
 import { groupIntoBursts } from './bursts';
-import { detectDocumentLike } from './documentDetection';
 import { classifyScene } from './sceneClassification';
 import { scorePhotoQuality } from './photoScore';
 import { mapWithConcurrency, pickConcurrency } from './concurrency';
-import { classifyPhoto, type ClassifySignals, type DuplicateContext, type Sensitivity } from './classifyPhoto';
+import { analyzePhoto, THUMB_SIZE, type PhotoFingerprint } from './photoAnalysis';
+import {
+  classifyPhoto,
+  type ClassifySignals,
+  type DuplicateContext,
+  type QualityFlag,
+  type Sensitivity,
+} from './classifyPhoto';
 
-export type { Sensitivity };
+export type { Sensitivity, QualityFlag };
+
+// A photo already kept in an earlier sort, with the fingerprint saved for it then — lets a new
+// batch (say, the same photos arriving again from a partner's phone or a WhatsApp chat) be
+// checked against the whole library, not just against itself.
+export interface LibraryEntry {
+  id: string;
+  fingerprint: PhotoFingerprint;
+}
 
 export interface DeleteCandidate {
   photo: Photo;
@@ -28,6 +39,7 @@ export interface MomentPhoto {
   similar: boolean;
   reason?: string;
   evidence?: string;
+  flags: QualityFlag[];
 }
 
 export interface Moment {
@@ -40,6 +52,9 @@ export interface AutoSortResult {
   keep: Photo[];
   toDelete: DeleteCandidate[];
   moments: Moment[];
+  // Per-photo fingerprint, saved alongside each photo that ends up kept (see App.tsx) so later
+  // sorts can recognise copies of it.
+  fingerprints: Map<string, PhotoFingerprint>;
 }
 
 // How often the progress callback fires for a big batch — calling it (and the React state
@@ -50,9 +65,32 @@ const PROGRESS_STEP = 10;
 interface Check extends ClassifySignals {
   photo: Photo;
   hash: bigint | null;
+  fingerprint: PhotoFingerprint | null;
 }
 
 const NO_FACE_CHECK = { eyesClosed: false, facingAway: false, faceCount: 0, openEyesFraction: 1, smileScore: 0, maxFaceArea: 0 };
+
+// Two photos within the dHash duplicate threshold only count as the same shot if their colour
+// thumbnails also match block by block (see thumbDifference). Calibrated on test photos:
+// re-saved, resized, messaging-app and lightly edited copies stayed at or under 12; the same
+// scene with the subject moved, recoloured (a different outfit) or swapped measured 22-90.
+const SAME_SHOT_MAX_BLOCK_DIFFERENCE = 16;
+// Matches duplicateDetection.ts's default near-exact threshold.
+const LIBRARY_HAMMING_CEILING = 8;
+// A library match with at least this many times the pixels of the copy already kept is the
+// better copy (e.g. the original from a partner's phone vs. a compressed WhatsApp copy kept
+// earlier) — kept and flagged instead of deleted.
+const BETTER_COPY_PIXEL_RATIO = 1.5;
+
+function sameShot(a: PhotoFingerprint | null, b: PhotoFingerprint | null): boolean {
+  if (!a || !b) return false;
+  if (a.sha256 && a.sha256 === b.sha256) return true;
+  return thumbDifference(a.thumb, b.thumb, THUMB_SIZE).worstBlock <= SAME_SHOT_MAX_BLOCK_DIFFERENCE;
+}
+
+function isExactCopy(a: PhotoFingerprint | null, b: PhotoFingerprint | null): boolean {
+  return Boolean(a?.sha256 && a.sha256 === b?.sha256);
+}
 
 // Entirely on-device — blur, closed-eyes, exposure/resolution, and near-duplicate detection.
 // No AI, no API call, no cost, works offline.
@@ -60,6 +98,7 @@ export async function runAutoSort(
   photos: Photo[],
   onProgress: (done: number, total: number) => void,
   sensitivity: Sensitivity = 'balanced',
+  library: LibraryEntry[] = [],
 ): Promise<AutoSortResult> {
   const keep: Photo[] = [];
   const toDelete: DeleteCandidate[] = [];
@@ -68,22 +107,22 @@ export async function runAutoSort(
   const checks = await mapWithConcurrency(photos, pickConcurrency(), async (photo) => {
     let check: Check;
     try {
-      const [{ isBlurry, sharpness }, face, quality, hash, isDocument, scene] = await Promise.all([
-        detectBlur(photo.blob).catch(() => ({ isBlurry: false, sharpness: Infinity })),
-        detectClosedEyes(photo.blob).catch(() => NO_FACE_CHECK),
-        detectLowQuality(photo.blob).catch(() => ({ isLowQuality: false }) as const),
-        computeImageHash(photo.blob).catch(() => null),
-        detectDocumentLike(photo.blob).catch(() => false),
+      const [analysis, scene] = await Promise.all([
+        analyzePhoto(photo.blob),
         classifyScene(photo.blob).catch(() => ({ isUtilityPhoto: false, label: null, confidence: 0 })),
       ]);
+      const face = analysis.face;
       check = {
         photo,
-        sharpness,
-        hash,
-        isBlurry,
-        isLowQuality: quality.isLowQuality,
-        qualityReason: quality.reason,
-        isDocument,
+        sharpness: analysis.sharpness,
+        focusSharpness: analysis.focusSharpness,
+        hash: analysis.hash,
+        fingerprint: analysis.fingerprint,
+        isBlurry: analysis.isBlurry,
+        isLowQuality: analysis.quality.isLowQuality,
+        qualityReason: analysis.quality.reason,
+        clippedHighlights: analysis.clippedHighlights,
+        isDocument: analysis.isDocument,
         isUtilityPhoto: scene.isUtilityPhoto,
         utilityLabel: scene.label,
         utilityConfidence: scene.confidence,
@@ -93,6 +132,9 @@ export async function runAutoSort(
         openEyesFraction: face.openEyesFraction,
         smileScore: face.smileScore,
         maxFaceArea: face.maxFaceArea,
+        faceSharpness: face.faceSharpness,
+        faceBrightness: face.faceBrightness,
+        frameBrightness: face.frameBrightness,
       };
     } catch {
       // If a check fails for a photo, default to keep — never auto-delete on an error.
@@ -100,6 +142,7 @@ export async function runAutoSort(
         photo,
         sharpness: Infinity,
         hash: null,
+        fingerprint: null,
         isBlurry: false,
         isLowQuality: false,
         isDocument: false,
@@ -168,13 +211,24 @@ export async function runAutoSort(
       const gap = scorePhotoQuality(best) - scorePhotoQuality(c);
       const existing = dupContextById.get(c.photo.id);
       if (!existing || distance < existing.hammingDistance) {
-        dupContextById.set(c.photo.id, { hammingDistance: distance, qualityGap: gap, comparePhotoId: best.photo.id });
+        dupContextById.set(c.photo.id, {
+          hammingDistance: distance,
+          qualityGap: gap,
+          comparePhotoId: best.photo.id,
+          exact: isExactCopy(c.fingerprint, best.fingerprint),
+        });
       }
     }
   }
 
   const withHash = checks.filter((c): c is Check & { hash: bigint } => c.hash !== null);
-  const duplicateGroups = findDuplicateGroups(withHash.map((c) => ({ id: c.photo.id, hash: c.hash })));
+  // No time bound on this pass, so a dHash match must also be confirmed by sameShot() — the
+  // same crib from the same angle on a different day is not a duplicate.
+  const duplicateGroups = findDuplicateGroups(
+    withHash.map((c) => ({ id: c.photo.id, hash: c.hash })),
+    undefined,
+    (i, j) => sameShot(withHash[i].fingerprint, withHash[j].fingerprint),
+  );
   for (const groupIds of duplicateGroups) {
     resolveGroup(
       groupIds.map((id) => checkById.get(id)!),
@@ -193,9 +247,56 @@ export async function runAutoSort(
     );
   }
 
+  // Copies of photos already kept in an earlier sort. Same bar as the in-batch duplicate pass
+  // (exact file, or a dHash match confirmed block by block).
+  const libraryDupById = new Map<string, DuplicateContext>();
+  if (library.length > 0) {
+    const bySha = new Map<string, LibraryEntry>();
+    for (const entry of library) if (entry.fingerprint.sha256) bySha.set(entry.fingerprint.sha256, entry);
+    const libraryHashes = library.map((entry) => {
+      try {
+        return BigInt(`0x${entry.fingerprint.dHash}`);
+      } catch {
+        return null;
+      }
+    });
+    for (const c of checks) {
+      if (!c.fingerprint || c.hash === null) continue;
+      let match: LibraryEntry | undefined = c.fingerprint.sha256 ? bySha.get(c.fingerprint.sha256) : undefined;
+      let distance = 0;
+      if (!match) {
+        let best = Infinity;
+        for (let k = 0; k < library.length; k++) {
+          const h = libraryHashes[k];
+          if (h === null) continue;
+          const d = hammingDistance(c.hash, h);
+          if (d <= LIBRARY_HAMMING_CEILING && d < best && sameShot(c.fingerprint, library[k].fingerprint)) {
+            best = d;
+            match = library[k];
+          }
+        }
+        distance = best;
+      }
+      if (!match) continue;
+      const pixels = c.fingerprint.width * c.fingerprint.height;
+      const libraryPixels = match.fingerprint.width * match.fingerprint.height;
+      if (!isExactCopy(c.fingerprint, match.fingerprint) && pixels >= libraryPixels * BETTER_COPY_PIXEL_RATIO) {
+        c.betterCopyOfLibraryPhoto = true;
+        continue;
+      }
+      libraryDupById.set(c.photo.id, {
+        hammingDistance: distance,
+        qualityGap: 0,
+        comparePhotoId: match.id,
+        exact: isExactCopy(c.fingerprint, match.fingerprint),
+        inLibrary: true,
+      });
+    }
+  }
+
   const debugRows: Record<string, unknown>[] = [];
   const keptIds = new Set<string>();
-  const resultById = new Map<string, { reason: string; evidence: string }>();
+  const resultById = new Map<string, { reason: string; evidence: string; flags: QualityFlag[] }>();
   for (const c of checks) {
     const isWinner = forceKeepIds.has(c.photo.id);
     // Group winners are protected from duplicate-loser status and from soft/uncertain signals
@@ -206,12 +307,15 @@ export async function runAutoSort(
     // out three equally-ruined shots defeats the purpose of a "keepsake" app. No dup context is
     // passed for a winner — it's the reference point other members are compared against, so it
     // can never itself be "a duplicate of something better."
-    const dup = isWinner ? undefined : dupContextById.get(c.photo.id);
+    // Already in the library trumps everything: even the best shot of this batch's group is
+    // redundant if the moment is already kept.
+    const dup = libraryDupById.get(c.photo.id) ?? (isWinner ? undefined : dupContextById.get(c.photo.id));
     const result = classifyPhoto(c, dup, sensitivity);
     if (isWinner && result.verdict !== 'delete') {
       keep.push(c.photo);
       keptIds.add(c.photo.id);
-      debugRows.push({ id: c.photo.id.slice(0, 8), verdict: 'keep (group winner)' });
+      resultById.set(c.photo.id, { reason: result.reason, evidence: result.evidence, flags: result.flags });
+      debugRows.push({ id: c.photo.id.slice(0, 8), verdict: 'keep (group winner)', flags: result.flags.join(' ') });
       continue;
     }
     debugRows.push({
@@ -225,8 +329,11 @@ export async function runAutoSort(
       uniqueness: result.scores.uniquenessScore.toFixed(2),
       duplicate: result.scores.duplicateScore.toFixed(2),
       confidence: result.scores.confidence.toFixed(2),
+      focus: c.focusSharpness?.toFixed(0),
+      face: c.faceSharpness?.toFixed(0),
+      flags: result.flags.join(' '),
     });
-    resultById.set(c.photo.id, { reason: result.reason, evidence: result.evidence });
+    resultById.set(c.photo.id, { reason: result.reason, evidence: result.evidence, flags: result.flags });
     if (result.verdict === 'delete') {
       toDelete.push({ photo: c.photo, reason: result.reason, evidence: result.evidence, comparePhotoId: dup?.comparePhotoId });
     } else {
@@ -250,9 +357,10 @@ export async function runAutoSort(
       return {
         photo: c.photo,
         kept: keptIds.has(id),
-        similar: dupContextById.has(id),
+        similar: dupContextById.has(id) || libraryDupById.has(id),
         reason: r?.reason,
         evidence: r?.evidence,
+        flags: r?.flags ?? [],
       };
     });
     momentPhotos.sort((a, b) => a.photo.capturedAt - b.photo.capturedAt);
@@ -264,10 +372,22 @@ export async function runAutoSort(
     moments.push({
       id: `single-${c.photo.id}`,
       timestamp: c.photo.capturedAt,
-      photos: [{ photo: c.photo, kept: keptIds.has(c.photo.id), similar: dupContextById.has(c.photo.id), reason: r?.reason, evidence: r?.evidence }],
+      photos: [
+        {
+          photo: c.photo,
+          kept: keptIds.has(c.photo.id),
+          similar: dupContextById.has(c.photo.id) || libraryDupById.has(c.photo.id),
+          reason: r?.reason,
+          evidence: r?.evidence,
+          flags: r?.flags ?? [],
+        },
+      ],
     });
   }
   moments.sort((a, b) => a.timestamp - b.timestamp);
 
-  return { keep, toDelete, moments };
+  const fingerprints = new Map<string, PhotoFingerprint>();
+  for (const c of checks) if (c.fingerprint) fingerprints.set(c.photo.id, c.fingerprint);
+
+  return { keep, toDelete, moments, fingerprints };
 }

@@ -3,6 +3,8 @@
 // directly with `npx tsx src/lib/classifyPhoto.test.ts`. The one property that matters most:
 // reasonable doubt must resolve to keep/review, never delete.
 import { classifyPhoto, type ClassifySignals, type DuplicateContext } from './classifyPhoto';
+import { scorePhotoQuality } from './photoScore';
+import { thumbDifference } from './duplicateDetection';
 
 const BASE: ClassifySignals = {
   sharpness: 250,
@@ -120,6 +122,60 @@ const cases: Case[] = [
   },
 ];
 
+// Signals from photoAnalysis.ts (sharpest regions, face focus/lighting, clipping) and library
+// matching. Values below are the ones measured on the calibration photos.
+const ANALYZED: ClassifySignals = { ...BASE, focusSharpness: 4000, faceSharpness: null, faceBrightness: null, frameBrightness: 120, clippedHighlights: 0 };
+
+cases.push(
+  {
+    name: 'portrait mode: soft background, sharp subject (whole-frame 25, sharpest regions 1600) is not "too blurry"',
+    signals: { ...ANALYZED, sharpness: 25, isBlurry: true, focusSharpness: 1600, faceCount: 1, faceSharpness: 1700, faceBrightness: 170 },
+    expect: 'review',
+  },
+  {
+    name: 'blurred all over (whole-frame 20, sharpest regions 45) is still deleted',
+    signals: { ...ANALYZED, sharpness: 20, isBlurry: true, focusSharpness: 45 },
+    expect: 'delete',
+  },
+  {
+    name: 'background sharp, baby moved (face 23) is flagged, not deleted',
+    signals: { ...ANALYZED, sharpness: 1474, focusSharpness: 4600, faceCount: 1, faceSharpness: 23, faceBrightness: 170 },
+    expect: 'review',
+  },
+  {
+    name: 'backlit by a window (face 51 vs frame 139) is flagged, not deleted',
+    signals: { ...ANALYZED, faceCount: 1, faceSharpness: 155, faceBrightness: 51, frameBrightness: 139 },
+    expect: 'review',
+  },
+  {
+    name: 'washed out (56% pure white) is flagged, not deleted',
+    signals: { ...ANALYZED, clippedHighlights: 0.56 },
+    expect: 'review',
+  },
+  {
+    name: 'sleeping baby (single face, eyes closed) is a keeper, not flagged',
+    signals: { ...ANALYZED, faceCount: 1, eyesClosed: true, openEyesFraction: 0, faceSharpness: 900, faceBrightness: 150 },
+    expect: 'review', // eyesClosed is still an internal soft signal; checked below that no flag is shown
+  },
+  {
+    name: 'exact copy of a photo in this batch',
+    signals: ANALYZED,
+    dup: { hammingDistance: 0, qualityGap: 0, comparePhotoId: 'winner', exact: true },
+    expect: 'delete',
+  },
+  {
+    name: 'already in the library (WhatsApp copy of a kept photo)',
+    signals: ANALYZED,
+    dup: { hammingDistance: 2, qualityGap: 0, comparePhotoId: 'kept-earlier', inLibrary: true },
+    expect: 'delete',
+  },
+  {
+    name: 'higher-resolution copy of a library photo is kept and flagged',
+    signals: { ...ANALYZED, betterCopyOfLibraryPhoto: true },
+    expect: 'review',
+  },
+);
+
 let pass = 0;
 let fail = 0;
 for (const c of cases) {
@@ -134,5 +190,65 @@ for (const c of cases) {
   }
 }
 
-console.log(`\n${pass}/${cases.length} passed`);
+function check(name: string, ok: boolean) {
+  if (ok) {
+    pass++;
+    console.log(`PASS  ${name}`);
+  } else {
+    fail++;
+    console.error(`FAIL  ${name}`);
+  }
+}
+const extraChecks: [string, boolean][] = [];
+const flagsFor = (signals: ClassifySignals) => classifyPhoto(signals).flags;
+extraChecks.push(
+  ['portrait shot is not flagged blurry', !flagsFor({ ...ANALYZED, sharpness: 25, isBlurry: true, focusSharpness: 1600 }).includes('blurry')],
+  ['moved baby is flagged "soft-face"', flagsFor({ ...ANALYZED, faceCount: 1, faceSharpness: 23 }).includes('soft-face')],
+  ['backlit face is flagged "face-in-shadow"', flagsFor({ ...ANALYZED, faceCount: 1, faceBrightness: 51, frameBrightness: 139 }).includes('face-in-shadow')],
+  ['dim room overall is not "face-in-shadow"', !flagsFor({ ...ANALYZED, faceCount: 1, faceBrightness: 50, frameBrightness: 60 }).includes('face-in-shadow')],
+  ['sleeping baby has no flags', flagsFor({ ...ANALYZED, faceCount: 1, eyesClosed: true, openEyesFraction: 0 }).length === 0],
+  ['group blink is flagged', flagsFor({ ...ANALYZED, faceCount: 4, eyesClosed: true, openEyesFraction: 0.75 }).includes('blink')],
+  ['library copy reason', classifyPhoto(ANALYZED, { hammingDistance: 0, qualityGap: 0, comparePhotoId: 'x', inLibrary: true, exact: true }).reason === 'Already in your library'],
+  ['generous still deletes blur-everywhere', classifyPhoto({ ...ANALYZED, sharpness: 5, isBlurry: true, focusSharpness: 9 }, undefined, 'generous').verdict === 'delete'],
+  ['strict still protects portrait', classifyPhoto({ ...ANALYZED, sharpness: 30, isBlurry: true, focusSharpness: 700 }, undefined, 'strict').verdict !== 'delete'],
+);
+for (const [name, ok] of extraChecks) check(name, ok);
+
+// Best-shot scoring: in a burst, the shot with the sharp, well-lit face should win even when
+// another frame has a sharper background.
+const face = { eyesClosed: false, facingAway: false, faceCount: 1, openEyesFraction: 1, smileScore: 0.5, maxFaceArea: 0.1 };
+check(
+  'burst pick: sharp face beats sharp background with blurry face',
+  scorePhotoQuality({ ...face, sharpness: 900, faceSharpness: 1500, faceBrightness: 160 }) >
+    scorePhotoQuality({ ...face, sharpness: 1500, faceSharpness: 30, faceBrightness: 160 }),
+);
+check(
+  'burst pick: well-lit face beats backlit face',
+  scorePhotoQuality({ ...face, sharpness: 900, faceSharpness: 800, faceBrightness: 150 }) >
+    scorePhotoQuality({ ...face, sharpness: 900, faceSharpness: 800, faceBrightness: 45 }),
+);
+check(
+  'burst pick: sharper still wins above the old 300 cap',
+  scorePhotoQuality({ ...face, sharpness: 900, faceSharpness: 1200, faceBrightness: 150 }) >
+    scorePhotoQuality({ ...face, sharpness: 900, faceSharpness: 400, faceBrightness: 150 }),
+);
+
+// Duplicate confirmation on thumbnails: an evenly, slightly different copy matches; a copy
+// with one region changed (subject moved / different outfit) doesn't.
+const size = 24;
+const thumbA = new Uint8Array(size * size * 3).map((_, i) => (i * 37) % 256);
+const recompressed = thumbA.map((v, i) => Math.max(0, Math.min(255, v + ((i % 5) - 2))));
+const brighter = thumbA.map((v) => Math.min(255, Math.round(v * 1.1)));
+const changedRegion = thumbA.map((v, i) => {
+  const cell = Math.floor(i / 3);
+  const x = cell % size;
+  const y = Math.floor(cell / size);
+  return x >= 8 && x < 14 && y >= 8 && y < 14 ? 255 - v : v;
+});
+check('recompressed copy passes block check', thumbDifference(thumbA, recompressed, size).worstBlock <= 16);
+check('brightened copy passes block check', thumbDifference(thumbA, brighter, size).worstBlock <= 16);
+check('changed subject region fails block check', thumbDifference(thumbA, changedRegion, size).worstBlock > 16);
+
+const total = cases.length + extraChecks.length + 6;
+console.log(`\n${pass}/${total} passed`);
 if (fail > 0) process.exit(1);

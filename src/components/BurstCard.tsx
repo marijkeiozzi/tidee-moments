@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Photo } from '../db/indexedDb';
 import { getDisplayableBlob } from '../hooks/usePhotoUrl';
-import { detectBlur } from '../lib/blurDetection';
-import { detectClosedEyes } from '../lib/eyesClosed';
+import { analyzePhoto, qualitySignalsOf } from '../lib/photoAnalysis';
 import { scorePhotoQuality } from '../lib/photoScore';
-
-const NO_FACE_CHECK = { eyesClosed: false, facingAway: false, faceCount: 0, openEyesFraction: 1, smileScore: 0, maxFaceArea: 0 };
 
 interface BurstCardProps {
   photos: Photo[];
@@ -49,11 +46,8 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
 
     Promise.all(
       photos.map(async (p) => {
-        const [blur, face] = await Promise.all([
-          detectBlur(p.blob).catch(() => ({ isBlurry: false, sharpness: 0 })),
-          detectClosedEyes(p.blob).catch(() => NO_FACE_CHECK),
-        ]);
-        return { score: scorePhotoQuality({ sharpness: blur.sharpness, ...face }), face };
+        const analysis = await analyzePhoto(p.blob, { fingerprint: false });
+        return { score: scorePhotoQuality(qualitySignalsOf(analysis)), face: analysis.face };
       }),
     )
       .then((results) => {
@@ -68,8 +62,8 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
           bestFace.faceCount === 0
             ? 'Picked the sharpest shot'
             : bestFace.smileScore > 0.5
-              ? 'Picked the clearest smiling shot with eyes open'
-              : 'Picked the clearest shot with eyes open',
+              ? 'Picked the sharpest, best-lit smiling face with eyes open'
+              : 'Picked the sharpest, best-lit face with eyes open',
         );
       })
       .catch(() => {

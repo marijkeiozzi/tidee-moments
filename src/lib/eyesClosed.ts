@@ -34,6 +34,14 @@ const EAR_CLOSED_THRESHOLD = 0.16;
 // near-profile) rather than glancing slightly off-center.
 const FRONTAL_RATIO_THRESHOLD = 0.35;
 
+// Face bounding box as a fraction of the image (0..1), so it maps onto any downscaled copy.
+export interface FaceBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface FaceCheck {
   eyesClosed: boolean;
   facingAway: boolean;
@@ -48,6 +56,9 @@ export interface FaceCheck {
   // Largest detected face's bounding-box area as a fraction of the whole image (0-1) — a
   // close-up, prominent face is usually a better keepsake than a person tiny in the background.
   maxFaceArea: number;
+  // Where each detected face is — lets photoAnalysis.ts judge focus and lighting on the face
+  // itself rather than the whole frame. Optional so older neutral constants stay valid.
+  faceBoxes?: FaceBox[];
 }
 
 const NO_FACES: FaceCheck = {
@@ -79,6 +90,7 @@ export async function detectClosedEyes(blob: Blob): Promise<FaceCheck> {
   let openEyesCount = 0;
   let smileSum = 0;
   let maxFaceArea = 0;
+  const faceBoxes: FaceBox[] = [];
 
   for (const d of detections) {
     const ear = (eyeAspectRatio(d.landmarks.getLeftEye()) + eyeAspectRatio(d.landmarks.getRightEye())) / 2;
@@ -92,6 +104,7 @@ export async function detectClosedEyes(blob: Blob): Promise<FaceCheck> {
     if (imgArea > 0) {
       const box = d.detection.box;
       maxFaceArea = Math.max(maxFaceArea, (box.width * box.height) / imgArea);
+      faceBoxes.push({ x: box.x / img.width, y: box.y / img.height, width: box.width / img.width, height: box.height / img.height });
     }
   }
 
@@ -102,5 +115,6 @@ export async function detectClosedEyes(blob: Blob): Promise<FaceCheck> {
     openEyesFraction: openEyesCount / detections.length,
     smileScore: smileSum / detections.length,
     maxFaceArea,
+    faceBoxes,
   };
 }

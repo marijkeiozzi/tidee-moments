@@ -103,9 +103,9 @@ function looksLikeDarkDocument(stats: RegionStats, minDarkFraction: number): boo
   );
 }
 
-export async function detectDocumentLike(blob: Blob): Promise<boolean> {
+export async function detectDocumentLike(source: Blob | ImageBitmap): Promise<boolean> {
   try {
-    const bitmap = await createImageBitmap(blob);
+    const bitmap = await createImageBitmap(source);
     try {
       const canvas = document.createElement('canvas');
       canvas.width = SAMPLE_SIZE;

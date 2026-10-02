@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { mapWithConcurrency, pickConcurrency } from '../lib/concurrency';
+import type { PhotoFingerprint } from '../lib/photoAnalysis';
 
 export type PhotoStatus = 'inbox' | 'kept' | 'trashed';
 
@@ -26,6 +27,9 @@ export interface Photo {
   analysis: AiAnalysis | null;
   note: string;
   isScreenshot: boolean;
+  // Saved when a photo is kept through auto-sort, so later imports can be checked against it
+  // for copies. Absent on photos kept before this existed (or kept by swiping).
+  fingerprint?: PhotoFingerprint;
 }
 
 export interface Album {
@@ -175,12 +179,21 @@ export async function getPhotosByStatus(status: PhotoStatus): Promise<Photo[]> {
   return db.getAllFromIndex('photos', 'by-status', status);
 }
 
-export async function updatePhotoStatus(id: string, status: PhotoStatus): Promise<void> {
+export async function updatePhotoStatus(id: string, status: PhotoStatus, fingerprint?: PhotoFingerprint): Promise<void> {
   const db = await getDb();
   const photo = await db.get('photos', id);
   if (!photo) return;
   photo.status = status;
+  if (fingerprint) photo.fingerprint = fingerprint;
   await db.put('photos', photo);
+}
+
+// Fingerprints of every kept photo that has one — the "library" a new batch is checked against
+// for copies (see autoSort.ts).
+export async function getLibraryFingerprints(): Promise<{ id: string; fingerprint: PhotoFingerprint }[]> {
+  const db = await getDb();
+  const kept = await db.getAllFromIndex('photos', 'by-status', 'kept');
+  return kept.flatMap((p) => (p.fingerprint ? [{ id: p.id, fingerprint: p.fingerprint }] : []));
 }
 
 export async function setPhotoNote(id: string, note: string): Promise<void> {

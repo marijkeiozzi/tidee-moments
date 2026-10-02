@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Photo } from '../db/indexedDb';
 import { suggestAlbumName } from '../lib/sessions';
 import { suggestMilestoneAlbumName } from '../lib/milestones';
-import type { DeleteCandidate, Moment, Sensitivity } from '../lib/autoSort';
+import type { DeleteCandidate, Moment, QualityFlag, Sensitivity } from '../lib/autoSort';
+import { FLAG_LABELS } from '../lib/classifyPhoto';
 import { usePhotoUrl } from '../hooks/usePhotoUrl';
 
 export type ConfirmAlbumChoice = { type: 'single'; name: string };
@@ -26,7 +27,7 @@ const SENSITIVITY_OPTIONS: { value: Sensitivity; label: string }[] = [
   { value: 'generous', label: 'Generous' },
 ];
 
-type Filter = 'all' | 'kept' | 'setAside';
+type Filter = 'all' | 'kept' | 'flagged' | 'setAside';
 
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -42,6 +43,8 @@ function dayKey(ts: number): string {
 function badgeLabel(reason: string | undefined, similar: boolean): string {
   if (!reason) return similar ? 'Similar' : 'Set aside';
   const r = reason.toLowerCase();
+  if (r.includes('already in your library')) return 'In library';
+  if (r.includes('exact copy')) return 'Copy';
   if (r.includes('duplicate')) return 'Similar';
   if (r.includes('blurry')) return 'Blurry';
   if (r.includes('blank')) return 'Blank';
@@ -56,12 +59,14 @@ function MomentThumb({
   kept,
   similar,
   reason,
+  flags,
   onToggle,
 }: {
   photo: Photo;
   kept: boolean;
   similar: boolean;
   reason?: string;
+  flags: QualityFlag[];
   onToggle: () => void;
 }) {
   const url = usePhotoUrl(photo);
@@ -76,6 +81,15 @@ function MomentThumb({
       {!kept && (
         <span className="absolute top-2 left-2 bg-black/55 text-white text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full">
           {badgeLabel(reason, similar)}
+        </span>
+      )}
+      {kept && flags.length > 0 && (
+        <span
+          title={flags.map((f) => FLAG_LABELS[f]).join(', ')}
+          className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate bg-white/90 text-[#9A3F26] text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full shadow-sm"
+        >
+          {FLAG_LABELS[flags[0]]}
+          {flags.length > 1 ? ` +${flags.length - 1}` : ''}
         </span>
       )}
       {kept && (
@@ -117,7 +131,16 @@ export default function AutoSortReview({
   const total = keepPhotos.length + deletePhotos.length;
 
   const blurryCount = useMemo(() => deletePhotos.filter((d) => d.reason.includes('blurry') || d.reason.includes('blank')).length, [deletePhotos]);
-  const duplicateCount = useMemo(() => deletePhotos.filter((d) => d.reason.includes('duplicate')).length, [deletePhotos]);
+  const duplicateCount = useMemo(
+    () => deletePhotos.filter((d) => /duplicate|copy|already in your library/i.test(d.reason)).length,
+    [deletePhotos],
+  );
+  const flagsById = useMemo(() => {
+    const map = new Map<string, QualityFlag[]>();
+    for (const m of moments) for (const p of m.photos) if (p.flags.length > 0) map.set(p.photo.id, p.flags);
+    return map;
+  }, [moments]);
+  const flaggedCount = useMemo(() => keepPhotos.filter((p) => flagsById.has(p.id)).length, [keepPhotos, flagsById]);
   const dayCount = useMemo(() => new Set(moments.map((m) => dayKey(m.timestamp))).size, [moments]);
 
   const dayGroups = useMemo(() => {
@@ -160,13 +183,21 @@ export default function AutoSortReview({
           <span className="font-semibold">{blurryCount}</span> <span className="text-[#8A8177]">blurry</span>
         </span>
         <span>
-          <span className="font-semibold">{duplicateCount}</span> <span className="text-[#8A8177]">duplicates & near-duplicates</span>
+          <span className="font-semibold">{duplicateCount}</span> <span className="text-[#8A8177]">duplicates & copies</span>
         </span>
+        {flaggedCount > 0 && (
+          <span>
+            <span className="font-semibold">{flaggedCount}</span> <span className="text-[#8A8177]">worth a look</span>
+          </span>
+        )}
         <span>
           <span className="font-semibold">{dayCount}</span> <span className="text-[#8A8177]">{dayCount === 1 ? 'day' : 'days'}</span>
         </span>
       </div>
-      <p className="text-[#8A8177] text-sm mt-3">Tap any photo to keep it or set it aside.</p>
+      <p className="text-[#8A8177] text-sm mt-3">
+        Tap any photo to keep it or set it aside. "Worth a look" shows kept photos with a possible problem — soft
+        focus, a face in shadow, someone blinking — for you to decide on.
+      </p>
 
       <div className="flex flex-wrap items-center gap-3 mt-6">
         <div className="inline-flex items-center bg-[#EFE9DD] rounded-full p-1 text-sm">
@@ -188,6 +219,7 @@ export default function AutoSortReview({
             [
               ['all', 'All'],
               ['kept', 'Kept'],
+              ['flagged', `Worth a look${flaggedCount > 0 ? ` · ${flaggedCount}` : ''}`],
               ['setAside', 'Set aside'],
             ] as const
           ).map(([value, label]) => (
@@ -229,6 +261,7 @@ export default function AutoSortReview({
                   const visiblePhotos = moment.photos.filter((p) => {
                     const kept = keptIds.has(p.photo.id);
                     if (filter === 'kept') return kept;
+                    if (filter === 'flagged') return kept && flagsById.has(p.photo.id);
                     if (filter === 'setAside') return !kept;
                     return true;
                   });
@@ -246,6 +279,7 @@ export default function AutoSortReview({
                             kept={keptIds.has(p.photo.id)}
                             similar={p.similar}
                             reason={p.reason}
+                            flags={flagsById.get(p.photo.id) ?? []}
                             onToggle={() => onMove(p.photo.id, keptIds.has(p.photo.id) ? 'delete' : 'keep')}
                           />
                         ))}
