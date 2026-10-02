@@ -8,6 +8,7 @@ import PeopleTab from './components/PeopleTab';
 import PersonGrid from './components/PersonGrid';
 import AutoSortReview, { type ConfirmAlbumChoice } from './components/AutoSortReview';
 import SavingScreen from './components/SavingScreen';
+import FirstYearView from './components/FirstYearView';
 import {
   addPhotos,
   assignPhotoToAlbum,
@@ -40,6 +41,7 @@ export default function App() {
   const [activeAlbumId, setActiveAlbumId] = useState<string | null>(null);
   const [openAlbum, setOpenAlbum] = useState<Album | null>(null);
   const [showAllKept, setShowAllKept] = useState(false);
+  const [showFirstYear, setShowFirstYear] = useState(false);
   const [keptWithoutAlbumCount, setKeptWithoutAlbumCount] = useState(0);
   const [creatingAlbum, setCreatingAlbum] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState('');
@@ -373,6 +375,24 @@ export default function App() {
     );
   }
 
+  if (showFirstYear) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
+        <FirstYearView
+          onBack={() => {
+            setShowFirstYear(false);
+            refreshAlbums();
+            refreshKeptWithoutAlbumCount();
+          }}
+          onGoToSort={() => {
+            setShowFirstYear(false);
+            setTab('sort');
+          }}
+        />
+      </div>
+    );
+  }
+
   if (openPerson) {
     return (
       <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
@@ -648,6 +668,12 @@ export default function App() {
                 New album
               </button>
             )}
+            <button
+              onClick={() => setShowFirstYear(true)}
+              className="text-sm bg-white border border-black/10 text-[#231F1B] font-medium px-5 py-2.5 rounded-full hover:bg-[#F6F1E7] transition-colors"
+            >
+              First year 🍼
+            </button>
             {keptWithoutAlbumCount > 0 && (
               <button
                 onClick={() => setShowAllKept(true)}
