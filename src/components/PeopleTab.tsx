@@ -129,7 +129,7 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
         kept, not your whole upload pile.
       </p>
 
-      {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
+      {error && <p className="text-xs text-[#9A3F26] mb-4">{error}</p>}
       {lastScanSummary && !scanning && <p className="text-xs text-[#A69C8E] mb-4">{lastScanSummary}</p>}
 
       {people.length === 0 && !scanning ? (

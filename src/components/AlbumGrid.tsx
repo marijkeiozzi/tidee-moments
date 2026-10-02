@@ -184,7 +184,7 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
       </p>
 
       {exportNote && (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
+        <p className="text-xs text-[#9A3F26] bg-[#F6DFCF]/60 border border-[#BB5133]/20 rounded-xl px-3 py-2 mb-4">
           ⚠️ {exportNote}
         </p>
       )}

@@ -56,7 +56,7 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
           onDelete();
         }}
         title="Delete album (photos stay — they just move to All Kept Photos)"
-        className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-white/90 text-[#A69C8E] hover:text-red-500 hover:bg-red-50 flex items-center justify-center shadow-sm transition-colors"
+        className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-white/90 text-[#A69C8E] hover:text-[#BB5133] hover:bg-[#F6DFCF] flex items-center justify-center shadow-sm transition-colors"
       >
         ✕
       </button>

@@ -36,11 +36,11 @@ function saveChild(info: ChildInfo) {
 const dateRange = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 const STATUS_BADGE: Record<SlotStatus, { text: string; className: string }> = {
-  good: { text: 'Covered', className: 'bg-green-50 text-green-800' },
-  thin: { text: 'A bit thin', className: 'bg-amber-50 text-amber-800' },
-  missing: { text: 'Missing', className: 'bg-red-50 text-red-700' },
-  'in-progress': { text: 'This month', className: 'bg-[#EFE9DD] text-[#7A7266]' },
-  upcoming: { text: 'Still to come', className: 'bg-[#EFE9DD] text-[#A69C8E]' },
+  good: { text: 'Covered', className: 'bg-[#EFE9DD] text-[#5B5349]' },
+  thin: { text: 'A bit thin', className: 'bg-[#F6DFCF] text-[#9A3F26]' },
+  missing: { text: 'Missing', className: 'bg-[#BB5133] text-white' },
+  'in-progress': { text: 'This month', className: 'border border-black/10 text-[#7A7266]' },
+  upcoming: { text: 'Still to come', className: 'border border-black/10 text-[#A69C8E]' },
 };
 
 function MonthCard({ slot, photos, onOpen }: { slot: FirstYearSlot; photos: Photo[]; onOpen: () => void }) {
@@ -77,7 +77,7 @@ function MonthCard({ slot, photos, onOpen }: { slot: FirstYearSlot; photos: Phot
       onClick={onOpen}
       disabled={disabled}
       className={`text-left bg-white border rounded-2xl overflow-hidden transition-all ${
-        slot.status === 'missing' ? 'border-red-200' : 'border-black/5'
+        slot.status === 'missing' ? 'border-[#BB5133]/40' : 'border-black/5'
       } ${disabled ? 'cursor-default' : 'hover:border-[#BB5133]/30 hover:shadow-md hover:-translate-y-0.5'}`}
     >
       <div className="aspect-square bg-[#EFE9DD] flex items-center justify-center">
@@ -235,23 +235,23 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
       {!editing && kept !== null && (
         <>
           {missing.length > 0 || thin.length > 0 ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-6 text-sm text-amber-900">
+            <div className="bg-[#F6DFCF]/60 border border-[#BB5133]/20 rounded-2xl px-4 py-3 mb-6 text-sm text-[#231F1B]">
               {missing.length > 0 && (
                 <p>
-                  <span className="font-semibold">No photos yet for:</span> {missing.map((s) => s.label).join(', ')}.
+                  <span className="font-semibold text-[#9A3F26]">No photos yet for:</span> {missing.map((s) => s.label).join(', ')}.
                 </p>
               )}
               {thin.length > 0 && (
                 <p className={missing.length > 0 ? 'mt-1' : ''}>
-                  <span className="font-semibold">Fewer than {THIN_MONTH_MIN} photos:</span>{' '}
+                  <span className="font-semibold text-[#9A3F26]">Fewer than {THIN_MONTH_MIN} photos:</span>{' '}
                   {thin.map((s) => `${s.label} (${s.photoIds.length})`).join(', ')}.
                 </p>
               )}
-              <p className="mt-2 text-amber-800">
+              <p className="mt-2 text-[#5B5349]">
                 {gapUnsorted > 0 ? (
                   <>
                     You have {gapUnsorted} unsorted photo{gapUnsorted === 1 ? '' : 's'} from these months.{' '}
-                    <button onClick={onGoToSort} className="font-semibold underline">
+                    <button onClick={onGoToSort} className="font-semibold text-[#BB5133] hover:underline">
                       Sort them now →
                     </button>
                   </>
@@ -262,7 +262,7 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
             </div>
           ) : (
             yearPhotoCount > 0 && (
-              <p className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-6 text-sm text-green-900">
+              <p className="bg-[#EFE9DD] border border-black/5 rounded-2xl px-4 py-3 mb-6 text-sm text-[#5B5349]">
                 Every month so far has at least {THIN_MONTH_MIN} photos 🌱
               </p>
             )

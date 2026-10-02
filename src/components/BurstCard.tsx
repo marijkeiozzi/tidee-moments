@@ -146,13 +146,13 @@ export default function BurstCard({ photos, onResolve, onKeepAll, onDeleteAll, o
           <div className="flex gap-1.5">
             <button
               onClick={() => onKeepAll(photos)}
-              className="flex-1 bg-green-100 hover:bg-green-200 text-green-700 font-semibold text-sm py-2 rounded-full transition-colors"
+              className="flex-1 bg-[#F6DFCF] hover:bg-[#F0CDB6] text-[#9A3F26] font-semibold text-sm py-2 rounded-full transition-colors"
             >
               ✅ Keep all {photos.length}
             </button>
             <button
               onClick={() => onDeleteAll(photos)}
-              className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-semibold text-sm py-2 rounded-full transition-colors"
+              className="flex-1 bg-[#EFE9DD] hover:bg-[#E6DECF] text-[#5B5349] font-semibold text-sm py-2 rounded-full transition-colors"
             >
               🗑️ Delete all {photos.length}
             </button>

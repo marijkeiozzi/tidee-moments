@@ -341,72 +341,42 @@ export default function App() {
     return <LandingPage onGetStarted={() => setView('app')} />;
   }
 
-  if (openAlbum) {
-    return (
-      <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
-        <AlbumGrid
-          title={openAlbum.name}
-          fetchPhotos={() => getPhotosByAlbum(openAlbum.id)}
-          onBack={() => {
-            setOpenAlbum(null);
-            refreshAlbums();
-            refreshKeptWithoutAlbumCount();
-          }}
-          emptyMessage="No photos in this album yet 🌱 Swipe up on a photo to add it here."
-        />
-      </div>
-    );
+  function closeSubviews() {
+    setOpenAlbum(null);
+    setShowAllKept(false);
+    setOpenPerson(null);
+    setShowFirstYear(false);
+    refreshAlbums();
+    refreshKeptWithoutAlbumCount();
   }
 
-  if (showAllKept) {
-    return (
-      <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
-        <AlbumGrid
-          title="All Kept Photos"
-          fetchPhotos={getKeptPhotosWithoutAlbum}
-          onBack={() => {
-            setShowAllKept(false);
-            refreshAlbums();
-            refreshKeptWithoutAlbumCount();
-          }}
-          emptyMessage="No kept photos outside an album right now 🌱 Photos you keep without choosing an album show up here."
-        />
-      </div>
-    );
+  function goToTab(next: Tab) {
+    closeSubviews();
+    setTab(next);
   }
 
-  if (showFirstYear) {
-    return (
-      <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
-        <FirstYearView
-          onBack={() => {
-            setShowFirstYear(false);
-            refreshAlbums();
-            refreshKeptWithoutAlbumCount();
-          }}
-          onGoToSort={() => {
-            setShowFirstYear(false);
-            setTab('sort');
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (openPerson) {
-    return (
-      <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
-        <PersonGrid
-          person={openPerson}
-          onBack={() => {
-            setOpenPerson(null);
-            refreshAlbums();
-            refreshKeptWithoutAlbumCount();
-          }}
-        />
-      </div>
-    );
-  }
+  // Album, person and first-year pages render inside the same shell (header + width) as the
+  // tabs, so every page keeps the app's look and navigation.
+  const subview = openAlbum ? (
+    <AlbumGrid
+      key={openAlbum.id}
+      title={openAlbum.name}
+      fetchPhotos={() => getPhotosByAlbum(openAlbum.id)}
+      onBack={closeSubviews}
+      emptyMessage="No photos in this album yet 🌱 Swipe up on a photo to add it here."
+    />
+  ) : showAllKept ? (
+    <AlbumGrid
+      title="All Kept Photos"
+      fetchPhotos={getKeptPhotosWithoutAlbum}
+      onBack={closeSubviews}
+      emptyMessage="No kept photos outside an album right now 🌱 Photos you keep without choosing an album show up here."
+    />
+  ) : openPerson ? (
+    <PersonGrid key={openPerson.id} person={openPerson} onBack={closeSubviews} />
+  ) : showFirstYear ? (
+    <FirstYearView onBack={closeSubviews} onGoToSort={() => goToTab('sort')} />
+  ) : null;
 
   return (
     <div className="min-h-screen bg-[#F6F1E7] text-[#231F1B]">
@@ -419,20 +389,20 @@ export default function App() {
           </button>
           <nav className="flex items-center gap-6 sm:gap-8 text-[15px] shrink-0">
             <button
-              onClick={() => setTab('albums')}
-              className={`whitespace-nowrap transition-colors ${tab === 'albums' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
+              onClick={() => goToTab('albums')}
+              className={`whitespace-nowrap transition-colors ${tab === 'albums' && !subview ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
             >
               Albums
             </button>
             <button
-              onClick={() => setTab('sort')}
-              className={`whitespace-nowrap transition-colors ${tab === 'sort' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
+              onClick={() => goToTab('sort')}
+              className={`whitespace-nowrap transition-colors ${tab === 'sort' && !subview ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
             >
               Sort photos{inbox.length > 0 ? ` (${inbox.length})` : ''}
             </button>
             <button
-              onClick={() => setTab('people')}
-              className={`whitespace-nowrap transition-colors ${tab === 'people' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
+              onClick={() => goToTab('people')}
+              className={`whitespace-nowrap transition-colors ${tab === 'people' && !subview ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
             >
               People
             </button>
@@ -449,7 +419,9 @@ export default function App() {
           </nav>
         </header>
 
-      {tab === 'sort' && (
+      {subview}
+
+      {!subview && tab === 'sort' && (
         <div className="flex flex-col flex-1 gap-4">
           {activeSelection === null && (
             <div className="mb-2">
@@ -467,7 +439,7 @@ export default function App() {
               {screenshotsRemaining > 0 && (
                 <button
                   onClick={() => setActiveSelection('screenshots')}
-                  className="text-sm text-rose-300 font-medium hover:underline mx-auto"
+                  className="text-sm text-[#BB5133] font-medium hover:underline mx-auto"
                 >
                   📱 {screenshotsRemaining} screenshot{screenshotsRemaining === 1 ? '' : 's'} kept separate — review
                   them →
@@ -514,7 +486,7 @@ export default function App() {
 
           {activeSelection === null ? (
             !autoSorting && !autoSortResult && allSortablePhotos.length === 0 && (
-              <p className="text-stone-400 text-center">Upload some photos above to get started 🌱</p>
+              <p className="text-[#A69C8E] text-center">Upload some photos above to get started 🌱</p>
             )
           ) : (
             <>
@@ -522,7 +494,7 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setActiveSelection(null)}
-                    className="text-rose-400 font-medium hover:underline whitespace-nowrap"
+                    className="text-[#8A8177] hover:text-[#231F1B] transition-colors whitespace-nowrap"
                   >
                     ← All bundles
                   </button>
@@ -530,13 +502,13 @@ export default function App() {
                     <>
                       <button
                         onClick={handleKeepAll}
-                        className="text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 rounded-full px-3 py-1 whitespace-nowrap transition-colors"
+                        className="text-xs font-medium text-white bg-[#231F1B] hover:bg-black rounded-full px-3 py-1.5 whitespace-nowrap transition-colors"
                       >
                         ✓ Keep all {photosToSort.length}
                       </button>
                       <button
                         onClick={handleDeleteAll}
-                        className="text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 rounded-full px-3 py-1 whitespace-nowrap transition-colors"
+                        className="text-xs font-medium text-[#231F1B] bg-white border border-black/10 hover:bg-[#EFE9DD] rounded-full px-3 py-1.5 whitespace-nowrap transition-colors"
                       >
                         ✕ Delete all {photosToSort.length}
                       </button>
@@ -547,7 +519,7 @@ export default function App() {
                   <select
                     value={activeAlbumId ?? ''}
                     onChange={(e) => setActiveAlbumId(e.target.value)}
-                    className="border border-stone-200 bg-white rounded-lg px-2 py-1 text-stone-700"
+                    className="text-sm border border-black/10 bg-white rounded-full px-3 py-1.5 text-[#231F1B]"
                   >
                     {albums.map((a) => (
                       <option key={a.id} value={a.id}>
@@ -580,40 +552,40 @@ export default function App() {
                     <button
                       onClick={() => handleSwipe(photosToSort[0], 'trash')}
                       title="Swipe left to delete"
-                      className="w-14 h-14 rounded-full bg-white border-2 border-red-400 text-red-500 text-2xl shadow-sm hover:shadow-md hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+                      className="w-14 h-14 rounded-full bg-white border border-black/10 text-[#231F1B] text-2xl shadow-sm hover:shadow-md hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
                     >
                       ✕
                     </button>
-                    <span className="text-xs font-semibold text-red-500">← Delete</span>
+                    <span className="text-xs font-medium text-[#8A8177]">← Delete</span>
                   </div>
                   <div className="flex flex-col items-center gap-1.5">
                     <button
                       onClick={() => handleSwipe(photosToSort[0], 'album')}
                       title="Swipe up to add to album"
-                      className="w-14 h-14 rounded-full bg-white border-2 border-rose-300 text-rose-400 text-2xl shadow-sm hover:shadow-md hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+                      className="w-14 h-14 rounded-full bg-white border border-black/10 text-[#231F1B] text-2xl shadow-sm hover:shadow-md hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
                     >
                       📁
                     </button>
-                    <span className="text-xs font-semibold text-rose-400">↑ Album</span>
+                    <span className="text-xs font-medium text-[#8A8177]">↑ Album</span>
                   </div>
                   <div className="flex flex-col items-center gap-1.5">
                     <button
                       onClick={() => handleSwipe(photosToSort[0], 'keep')}
                       title="Swipe right to keep"
-                      className="w-14 h-14 rounded-full bg-white border-2 border-green-400 text-green-500 text-2xl shadow-sm hover:shadow-md hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+                      className="w-14 h-14 rounded-full bg-[#BB5133] border border-[#BB5133] text-white text-2xl shadow-sm hover:shadow-md hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
                     >
-                      ❤️
+                      ♥
                     </button>
-                    <span className="text-xs font-semibold text-green-500">Keep →</span>
+                    <span className="text-xs font-medium text-[#BB5133]">Keep →</span>
                   </div>
                 </div>
               )}
 
-              <p className="text-xs text-stone-400 text-center">
+              <p className="text-xs text-[#A69C8E] text-center">
                 Tap a button, swipe, or use arrow keys · saves to "
                 {albums.find((a) => a.id === activeAlbumId)?.name ?? 'Favorites'}"
               </p>
-              <p className="text-xs text-stone-500 text-center">
+              <p className="text-xs text-[#8A8177] text-center">
                 🔒 "Delete" only removes it from Tidee Moments — the original photo on your device is never
                 touched.
               </p>
@@ -622,7 +594,7 @@ export default function App() {
         </div>
       )}
 
-      {tab === 'albums' && (
+      {!subview && tab === 'albums' && (
         <div>
           <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-6">Your albums.</h1>
           <div className="flex items-center gap-2 mb-6">
@@ -695,7 +667,7 @@ export default function App() {
         </div>
       )}
 
-      {tab === 'people' && <PeopleTab onOpenPerson={setOpenPerson} />}
+      {!subview && tab === 'people' && <PeopleTab onOpenPerson={setOpenPerson} />}
 
       {albumToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#231F1B] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">

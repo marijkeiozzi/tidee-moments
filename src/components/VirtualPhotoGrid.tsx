@@ -77,17 +77,17 @@ function PhotoThumb({
       <button
         onClick={onToggle}
         title={moveIcon ? 'Tap to move to the other pile' : undefined}
-        className={`relative aspect-square w-full rounded-xl overflow-hidden shadow-sm bg-stone-100 ${selected ? 'ring-4 ring-rose-400' : ''}`}
+        className={`relative aspect-square w-full rounded-xl overflow-hidden shadow-sm bg-[#EFE9DD] ${selected ? 'ring-4 ring-[#BB5133]' : ''}`}
       >
         {url ? (
           <img src={url} alt="" className="w-full h-full object-cover" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-6 h-6 rounded-full border-2 border-stone-300 border-t-rose-400 animate-spin" />
+            <div className="w-6 h-6 rounded-full border-2 border-[#F6DFCF] border-t-[#BB5133] animate-spin" />
           </div>
         )}
         {selected && (
-          <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-rose-400 text-white text-xs flex items-center justify-center shadow">
+          <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[#BB5133] text-white text-xs flex items-center justify-center shadow">
             ✓
           </span>
         )}
@@ -97,11 +97,11 @@ function PhotoThumb({
           </span>
         )}
       </button>
-      <p className="text-xs text-stone-400 text-center truncate">{dayLabelFormat.format(new Date(photo.capturedAt))}</p>
+      <p className="text-xs text-[#A69C8E] text-center truncate">{dayLabelFormat.format(new Date(photo.capturedAt))}</p>
       {caption && (
-        <div className="text-xs bg-red-50 border border-red-100 rounded-lg px-2 py-1.5 text-red-700" title={caption.evidence}>
+        <div className="text-xs bg-[#F6DFCF]/60 border border-[#BB5133]/15 rounded-lg px-2 py-1.5 text-[#9A3F26]" title={caption.evidence}>
           <p className="font-semibold truncate">{caption.reason}</p>
-          <p className="text-red-500 leading-snug line-clamp-2">{caption.evidence}</p>
+          <p className="text-[#7A7266] leading-snug line-clamp-2">{caption.evidence}</p>
         </div>
       )}
       {onNoteChange && (
@@ -113,7 +113,7 @@ function PhotoThumb({
             if (noteDraft !== photo.note) onNoteChange(photo.id, noteDraft);
           }}
           placeholder="Add a caption…"
-          className="w-full text-xs text-stone-600 placeholder:text-stone-400 bg-white border border-stone-200 rounded-lg px-2 py-1 outline-none focus:border-rose-300"
+          className="w-full text-xs text-[#5B5349] placeholder:text-[#A69C8E] bg-white border border-black/10 rounded-lg px-2 py-1 outline-none focus:border-[#BB5133]/50"
         />
       )}
     </div>
@@ -144,7 +144,7 @@ export default function VirtualPhotoGrid({
       {groups.map((group) => (
         <div key={group.key}>
           <h3 className="text-sm font-semibold text-[#8A8177] mb-2">
-            {group.label} <span className="text-stone-500 font-normal">· {group.photos.length}</span>
+            {group.label} <span className="text-[#A69C8E] font-normal">· {group.photos.length}</span>
           </h3>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
             {group.photos.map((photo) => (

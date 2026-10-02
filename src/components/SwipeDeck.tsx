@@ -176,13 +176,13 @@ function SwipeCard({ photo, stackDepth, interactive, onSwipe, onNoteChange }: Sw
         <>
           <motion.div
             style={{ opacity: trashOpacity }}
-            className="absolute top-2 left-2 sm:top-6 sm:left-6 bg-white/90 border-2 sm:border-4 border-red-500 text-red-600 font-bold text-xs sm:text-xl px-1.5 py-0.5 sm:px-3 sm:py-1 rounded sm:rounded-lg -rotate-12 shadow-md whitespace-nowrap"
+            className="absolute top-2 left-2 sm:top-6 sm:left-6 bg-white/90 border-2 sm:border-4 border-[#231F1B] text-[#231F1B] font-bold text-xs sm:text-xl px-1.5 py-0.5 sm:px-3 sm:py-1 rounded sm:rounded-lg -rotate-12 shadow-md whitespace-nowrap"
           >
             ← DELETE
           </motion.div>
           <motion.div
             style={{ opacity: keepOpacity }}
-            className="absolute top-2 right-2 sm:top-6 sm:right-6 bg-white/90 border-2 sm:border-4 border-green-500 text-green-600 font-bold text-xs sm:text-xl px-1.5 py-0.5 sm:px-3 sm:py-1 rounded sm:rounded-lg rotate-12 shadow-md whitespace-nowrap"
+            className="absolute top-2 right-2 sm:top-6 sm:right-6 bg-white/90 border-2 sm:border-4 border-[#BB5133] text-[#BB5133] font-bold text-xs sm:text-xl px-1.5 py-0.5 sm:px-3 sm:py-1 rounded sm:rounded-lg rotate-12 shadow-md whitespace-nowrap"
           >
             KEEP →
           </motion.div>
