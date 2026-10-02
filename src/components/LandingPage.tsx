@@ -1,6 +1,7 @@
-interface LandingPageProps {
-  onGetStarted: () => void;
-}
+import { routeHref } from '../lib/routes';
+
+const SORT_HREF = routeHref({ page: 'sort' });
+const ALBUMS_HREF = routeHref({ page: 'albums' });
 
 const STEPS = [
   {
@@ -104,7 +105,7 @@ function PolaroidPhoto({ gradient, className }: { gradient: string; className?: 
   );
 }
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#F6F1E7] text-[#231F1B]">
       <div className="max-w-6xl mx-auto px-6 sm:px-10">
@@ -113,19 +114,19 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             Tidee Moments<span className="text-[#BB5133]">.</span>
           </span>
           <nav className="hidden sm:flex items-center gap-8 text-[15px]">
-            <button onClick={onGetStarted} className="text-[#231F1B] font-medium hover:opacity-70 transition-opacity">
+            <a href={ALBUMS_HREF} className="text-[#231F1B] font-medium hover:opacity-70 transition-opacity">
               Albums
-            </button>
-            <button onClick={onGetStarted} className="text-[#8A8177] hover:text-[#231F1B] transition-colors">
+            </a>
+            <a href={SORT_HREF} className="text-[#8A8177] hover:text-[#231F1B] transition-colors">
               Sort photos
-            </button>
+            </a>
           </nav>
-          <button
-            onClick={onGetStarted}
+          <a
+            href={SORT_HREF}
             className="bg-[#231F1B] text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-black transition-colors"
           >
             Get started
-          </button>
+          </a>
         </header>
 
         <section className="grid lg:grid-cols-2 gap-12 items-center py-16 sm:py-24">
@@ -144,12 +145,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               Drop in the whole camera roll. We'll set aside the blurry shots and duplicates, and pick the best of
               every moment and every day, so your albums come together in minutes.
             </p>
-            <button
-              onClick={onGetStarted}
+            <a
+              href={SORT_HREF}
               className="inline-flex items-center gap-2 bg-[#231F1B] text-white font-medium text-[15px] px-7 py-4 rounded-full hover:bg-black hover:scale-[1.02] transition-all"
             >
               Start sorting <span aria-hidden>→</span>
-            </button>
+            </a>
           </div>
 
           <div className="relative h-[420px] hidden lg:block">
@@ -225,12 +226,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             Built for busy parents, grandparents preserving family memories, and anyone with a camera roll they've
             been meaning to tidee up for years.
           </p>
-          <button
-            onClick={onGetStarted}
+          <a
+            href={SORT_HREF}
             className="inline-flex items-center gap-2 bg-[#231F1B] text-white font-medium px-7 py-3 rounded-full hover:bg-black hover:scale-[1.02] transition-all"
           >
             Start sorting <span aria-hidden>→</span>
-          </button>
+          </a>
         </section>
       </div>
     </div>

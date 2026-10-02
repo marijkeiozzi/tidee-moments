@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import type { Person, Photo } from '../db/indexedDb';
 import { getAllPeople, getPhotosByIds, getPhotosByStatus, renamePerson, replaceAllPeople } from '../db/indexedDb';
 import { loadFaceModels, getFaceDescriptors, clusterFaces } from '../lib/faces';
+import { getDisplayableBlob } from '../hooks/usePhotoUrl';
+import { routeHref } from '../lib/routes';
 
 interface PeopleTabProps {
-  onOpenPerson: (person: Person) => void;
+  // Lets the parent re-read people after a scan, so person pages can be opened by address.
+  onPeopleChanged?: () => void;
 }
 
 const MIN_CLUSTER_SIZE = 2;
 
-export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
+export default function PeopleTab({ onPeopleChanged }: PeopleTabProps) {
   const [people, setPeople] = useState<Person[]>([]);
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const [scanning, setScanning] = useState(false);
@@ -24,7 +27,7 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
   function handleRename(id: string, name: string) {
     const trimmed = name.trim() || 'Unnamed';
     setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, name: trimmed } : p)));
-    renamePerson(id, trimmed);
+    renamePerson(id, trimmed).then(() => onPeopleChanged?.());
   }
 
   useEffect(() => {
@@ -35,7 +38,8 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
         const [firstId] = person.photoIds;
         if (!firstId) continue;
         const [photo] = await getPhotosByIds([firstId]);
-        if (photo && !cancelled) urls[person.id] = URL.createObjectURL(photo.blob);
+        // getDisplayableBlob converts iPhone HEIC photos, which most browsers can't show as-is.
+        if (photo && !cancelled) urls[person.id] = URL.createObjectURL(await getDisplayableBlob(photo));
       }
       if (!cancelled) setThumbUrls(urls);
       else Object.values(urls).forEach((u) => URL.revokeObjectURL(u));
@@ -92,6 +96,7 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
 
       await replaceAllPeople(newPeople);
       setPeople(newPeople);
+      onPeopleChanged?.();
       setLastScanSummary(
         `Scanned ${keptPhotos.length} photo${keptPhotos.length === 1 ? '' : 's'} · found faces in ${photosWithFaces} · ` +
           `${entries.length} face${entries.length === 1 ? '' : 's'} detected · grouped into ${newPeople.length} ` +
@@ -143,11 +148,15 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
               key={person.id}
               className="bg-white border border-black/5 rounded-2xl overflow-hidden text-left hover:border-[#BB5133]/30 hover:shadow-md transition-all"
             >
-              <button onClick={() => onOpenPerson(person)} className="block w-full aspect-square bg-[#EFE9DD]">
+              <a
+                href={routeHref({ page: 'person', personId: person.id })}
+                aria-label={`Open ${person.name}`}
+                className="block w-full aspect-square bg-[#EFE9DD]"
+              >
                 {thumbUrls[person.id] && (
                   <img src={thumbUrls[person.id]} alt="" className="w-full h-full object-cover" />
                 )}
-              </button>
+              </a>
               <div className="p-2">
                 <input
                   value={person.name}

@@ -261,6 +261,14 @@ export async function createAlbum(name: string): Promise<Album> {
   return album;
 }
 
+export async function renameAlbum(id: string, name: string): Promise<void> {
+  const db = await getDb();
+  const album = await db.get('albums', id);
+  if (!album) return;
+  album.name = name;
+  await db.put('albums', album);
+}
+
 export async function getAllAlbums(): Promise<Album[]> {
   const db = await getDb();
   return db.getAll('albums');

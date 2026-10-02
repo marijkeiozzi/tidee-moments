@@ -1,6 +1,13 @@
 import type { Photo } from '../db/indexedDb';
 import { getDisplayableBlob } from '../hooks/usePhotoUrl';
-import { photoFilename } from './filename';
+import { exportFileName, sortChronologically } from './exportAlbum';
+import { mapWithConcurrency } from './concurrency';
+
+// Photos on the shared page are resized to this long edge. Full-size originals embedded as
+// text made a 300-photo album page several gigabytes — too big to open, let alone send. 1600px
+// is sharp on phones, tablets and laptops; "Export zip" is the way to hand over originals.
+const SHARE_MAX_EDGE = 1600;
+const SHARE_JPEG_QUALITY = 0.86;
 
 function blobToDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -9,6 +16,29 @@ function blobToDataUri(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function shrinkForSharing(blob: Blob): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      const scale = Math.min(1, SHARE_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && blob.type === 'image/jpeg') return blob;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return blob;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', SHARE_JPEG_QUALITY));
+      return out ?? blob;
+    } finally {
+      bitmap.close();
+    }
+  } catch {
+    return blob;
+  }
 }
 
 function escapeHtml(text: string): string {
@@ -21,37 +51,36 @@ export interface ShareablePageResult {
   failed: number;
 }
 
-export async function buildShareablePage(albumName: string, photos: Photo[]): Promise<ShareablePageResult> {
-  const results = await Promise.all(
-    photos.map(async (photo) => {
-      try {
-        const dataUri = await getDisplayableBlob(photo).then(blobToDataUri);
-        return { photo, dataUri };
-      } catch {
-        return { photo, dataUri: null };
-      }
-    }),
-  );
+export async function buildShareablePage(
+  albumName: string,
+  photos: Photo[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<ShareablePageResult> {
+  const ordered = sortChronologically(photos);
+  let done = 0;
+  // A few at a time — decoding and resizing hundreds of full-size photos at once would exhaust
+  // memory on a phone.
+  const results = await mapWithConcurrency(ordered, 3, async (photo) => {
+    try {
+      const dataUri = await getDisplayableBlob(photo).then(shrinkForSharing).then(blobToDataUri);
+      return { photo, dataUri };
+    } catch {
+      return { photo, dataUri: null };
+    } finally {
+      onProgress?.(++done, ordered.length);
+    }
+  });
 
   const usable = results.filter((r): r is { photo: Photo; dataUri: string } => r.dataUri !== null);
   const failed = results.length - usable.length;
 
-  const usedNames = new Set<string>();
   const cards = usable
     .map(({ photo, dataUri }, i) => {
       const caption = photo.note.trim();
-      const ext = dataUri.slice(5, dataUri.indexOf(';')).split('/')[1] || 'jpg';
-      let rawName = photoFilename(photo.note, albumName, i + 1, ext);
-      let suffix = 2;
-      while (usedNames.has(rawName)) {
-        rawName = photoFilename(`${photo.note} (${suffix})`, albumName, i + 1, ext);
-        suffix++;
-      }
-      usedNames.add(rawName);
-      const filename = escapeHtml(rawName);
+      const filename = escapeHtml(exportFileName(photo, albumName, i, usable.length, 'jpg'));
       return `
         <figure>
-          <img src="${dataUri}" alt="" loading="lazy" />
+          <img src="${dataUri}" alt="${escapeHtml(caption)}" loading="lazy" />
           ${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''}
           <a class="save-btn" href="${dataUri}" download="${filename}">⬇ Save</a>
         </figure>`;

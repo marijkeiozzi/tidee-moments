@@ -4,6 +4,7 @@ import { getPhotosByStatus } from '../db/indexedDb';
 import { getDisplayableBlob } from '../hooks/usePhotoUrl';
 import { buildFirstYear, parseBirthDate, THIN_MONTH_MIN, type FirstYearSlot, type SlotStatus } from '../lib/firstYear';
 import AlbumGrid from './AlbumGrid';
+import { navigate, routeHref } from '../lib/routes';
 
 const STORAGE_KEY = 'tidee.firstYear';
 
@@ -43,7 +44,7 @@ const STATUS_BADGE: Record<SlotStatus, { text: string; className: string }> = {
   upcoming: { text: 'Still to come', className: 'border border-black/10 text-[#A69C8E]' },
 };
 
-function MonthCard({ slot, photos, onOpen }: { slot: FirstYearSlot; photos: Photo[]; onOpen: () => void }) {
+function MonthCard({ slot, photos }: { slot: FirstYearSlot; photos: Photo[] }) {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,15 +72,11 @@ function MonthCard({ slot, photos, onOpen }: { slot: FirstYearSlot; photos: Phot
   const badge = STATUS_BADGE[slot.status];
   const count = slot.photoIds.length;
   const disabled = count === 0;
-
-  return (
-    <button
-      onClick={onOpen}
-      disabled={disabled}
-      className={`text-left bg-white border rounded-2xl overflow-hidden transition-all ${
-        slot.status === 'missing' ? 'border-[#BB5133]/40' : 'border-black/5'
-      } ${disabled ? 'cursor-default' : 'hover:border-[#BB5133]/30 hover:shadow-md hover:-translate-y-0.5'}`}
-    >
+  const className = `block text-left bg-white border rounded-2xl overflow-hidden transition-all ${
+    slot.status === 'missing' ? 'border-[#BB5133]/40' : 'border-black/5'
+  } ${disabled ? 'cursor-default' : 'hover:border-[#BB5133]/30 hover:shadow-md hover:-translate-y-0.5'}`;
+  const body = (
+    <>
       <div className="aspect-square bg-[#EFE9DD] flex items-center justify-center">
         {coverUrl ? (
           <img src={coverUrl} alt="" className="w-full h-full object-cover" />
@@ -102,30 +99,39 @@ function MonthCard({ slot, photos, onOpen }: { slot: FirstYearSlot; photos: Phot
           {slot.unsortedCount > 0 && <span className="text-[#BB5133]"> · {slot.unsortedCount} still to sort</span>}
         </p>
       </div>
-    </button>
+    </>
+  );
+  // A month with no photos has nothing to open — rendered as a plain card, not a dead link.
+  return disabled ? (
+    <div className={className}>{body}</div>
+  ) : (
+    <a href={routeHref({ page: 'first-year', slot: slot.key })} className={className}>
+      {body}
+    </a>
   );
 }
 
 interface FirstYearViewProps {
+  // Which month (or "all") is open, from the page address; null for the month-by-month overview.
+  slot: string | null;
   onBack: () => void;
-  onGoToSort: () => void;
 }
 
-export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps) {
+export default function FirstYearView({ slot: openSlotKey, onBack }: FirstYearViewProps) {
   const [child, setChild] = useState<ChildInfo | null>(() => loadChild());
   const [editing, setEditing] = useState(child === null);
   const [draftName, setDraftName] = useState(child?.name ?? '');
   const [draftBirth, setDraftBirth] = useState(child?.birthDate ?? '');
   const [kept, setKept] = useState<Photo[] | null>(null);
   const [unsorted, setUnsorted] = useState<Photo[]>([]);
-  const [openSlot, setOpenSlot] = useState<FirstYearSlot | 'all' | null>(null);
 
+  // Re-read on every open/close of a month so filing photos there is reflected here.
   useEffect(() => {
     Promise.all([getPhotosByStatus('kept'), getPhotosByStatus('inbox')]).then(([k, u]) => {
       setKept(k);
       setUnsorted(u.filter((p) => !p.isScreenshot));
     });
-  }, [openSlot]);
+  }, [openSlotKey]);
 
   const birth = child ? parseBirthDate(child.birthDate) : null;
   const slots = useMemo(
@@ -153,14 +159,31 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
     setEditing(false);
   }
 
-  if (openSlot) {
+  if (openSlotKey && child) {
+    const backToOverview = () => navigate({ page: 'first-year', slot: null });
+    if (kept === null) return <p className="text-[#A69C8E]">Loading your photos…</p>;
+    const openSlot = openSlotKey === 'all' ? 'all' : slots.find((s) => s.key === openSlotKey);
+    if (!openSlot) {
+      return (
+        <div>
+          <p className="text-[#7A7266] mb-3">That month isn't part of the first year.</p>
+          <a href={routeHref({ page: 'first-year', slot: null })} className="text-sm text-[#BB5133] hover:underline">
+            ← Back to the first year
+          </a>
+        </div>
+      );
+    }
     const photos =
       openSlot === 'all' ? slots.flatMap((s) => slotPhotos.get(s.key) ?? []) : (slotPhotos.get(openSlot.key) ?? []);
     return (
       <AlbumGrid
+        key={openSlotKey}
+        mode="collection"
         title={openSlot === 'all' ? title : `${title} · ${openSlot.label}`}
         fetchPhotos={async () => photos}
-        onBack={() => setOpenSlot(null)}
+        onBack={backToOverview}
+        backLabel="First year"
+        emptyMessage="No kept photos from this month yet 🌱"
       />
     );
   }
@@ -168,7 +191,7 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
   return (
     <div>
       <button onClick={onBack} className="text-sm text-[#8A8177] hover:text-[#231F1B] transition-colors mb-2">
-        ← Back
+        ← Albums
       </button>
       <h2 className="font-serif text-3xl sm:text-4xl mb-2">{title}</h2>
       <p className="text-[#7A7266] text-sm mb-6 max-w-2xl">
@@ -220,13 +243,18 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
           <button onClick={() => setEditing(true)} className="text-[#BB5133] hover:underline">
             Change
           </button>
-          <button
-            onClick={() => setOpenSlot('all')}
-            disabled={yearPhotoCount === 0}
-            className="ml-auto text-sm font-medium bg-[#231F1B] hover:bg-black text-white px-4 py-2 rounded-full transition-colors disabled:opacity-40"
-          >
-            Open whole year
-          </button>
+          {yearPhotoCount > 0 ? (
+            <a
+              href={routeHref({ page: 'first-year', slot: 'all' })}
+              className="ml-auto text-sm font-medium bg-[#231F1B] hover:bg-black text-white px-4 py-2 rounded-full transition-colors"
+            >
+              Open whole year
+            </a>
+          ) : (
+            <span className="ml-auto text-sm font-medium bg-[#231F1B] text-white px-4 py-2 rounded-full opacity-40">
+              Open whole year
+            </span>
+          )}
         </div>
       )}
 
@@ -251,9 +279,9 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
                 {gapUnsorted > 0 ? (
                   <>
                     You have {gapUnsorted} unsorted photo{gapUnsorted === 1 ? '' : 's'} from these months.{' '}
-                    <button onClick={onGoToSort} className="font-semibold text-[#BB5133] hover:underline">
+                    <a href={routeHref({ page: 'sort' })} className="font-semibold text-[#BB5133] hover:underline">
                       Sort them now →
-                    </button>
+                    </a>
                   </>
                 ) : (
                   'Check your partner’s phone, grandparents, shared albums and messaging apps for photos from these months.'
@@ -274,7 +302,6 @@ export default function FirstYearView({ onBack, onGoToSort }: FirstYearViewProps
                 key={slot.key}
                 slot={slot}
                 photos={slotPhotos.get(slot.key) ?? []}
-                onOpen={() => setOpenSlot(slot)}
               />
             ))}
           </div>
