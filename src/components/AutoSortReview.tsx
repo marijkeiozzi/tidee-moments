@@ -160,7 +160,7 @@ export default function AutoSortReview({
           <span className="font-semibold">{blurryCount}</span> <span className="text-[#8A8177]">blurry</span>
         </span>
         <span>
-          <span className="font-semibold">{duplicateCount}</span> <span className="text-[#8A8177]">duplicates & near-duplicates</span>
+          <span className="font-semibold">{duplicateCount}</span> <span className="text-[#8A8177]">{duplicateCount === 1 ? 'duplicate or near-duplicate' : 'duplicates & near-duplicates'}</span>
         </span>
         <span>
           <span className="font-semibold">{dayCount}</span> <span className="text-[#8A8177]">{dayCount === 1 ? 'day' : 'days'}</span>

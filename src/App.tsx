@@ -246,7 +246,12 @@ export default function App() {
       const toDelete = prev.toDelete.filter((d) => d.photo.id !== photoId);
       if (to === 'keep') keep.push(photo);
       else toDelete.push({ photo, reason: 'Moved to delete by you', evidence: 'You moved this photo to the delete pile.' });
-      return { keep, toDelete };
+      const moments = prev.moments.map((m) =>
+        m.photos.some((mp) => mp.photo.id === photoId)
+          ? { ...m, photos: m.photos.map((mp) => (mp.photo.id === photoId ? { ...mp, kept: to === 'keep' } : mp)) }
+          : m,
+      );
+      return { keep, toDelete, moments };
     });
   }
 
@@ -291,8 +296,12 @@ export default function App() {
     }
   }
 
+  // "Start over" throws away the review (including any photos moved by hand) and sorts the
+  // whole roll again from scratch. Just clearing the result would leave the photos sitting in
+  // the inbox with nothing on screen to sort them — auto-sort only fires once per photo.
   function handleCancelAutoSort() {
     setAutoSortResult(null);
+    handleAutoSort();
   }
 
   async function handleResolveBurst(_keep: Photo, skip: Photo[]) {
@@ -493,7 +502,7 @@ export default function App() {
           )}
 
           {activeSelection === null ? (
-            !autoSorting && !autoSortResult && allSortablePhotos.length === 0 && (
+            !autoSorting && !autoSortResult && inbox.length === 0 && (
               <p className="text-stone-400 text-center">Upload some photos above to get started 🌱</p>
             )
           ) : (

@@ -1,7 +1,7 @@
 import type { Photo } from '../db/indexedDb';
 import { detectBlur } from './blurDetection';
 import { detectClosedEyes } from './eyesClosed';
-import { detectLowQuality } from './qualityDetection';
+import { detectLowQuality, type QualityResult } from './qualityDetection';
 import { computeImageHash, findDuplicateGroups, hammingDistance } from './duplicateDetection';
 import { groupIntoBursts } from './bursts';
 import { detectDocumentLike } from './documentDetection';
@@ -71,7 +71,7 @@ export async function runAutoSort(
       const [{ isBlurry, sharpness }, face, quality, hash, isDocument, scene] = await Promise.all([
         detectBlur(photo.blob).catch(() => ({ isBlurry: false, sharpness: Infinity })),
         detectClosedEyes(photo.blob).catch(() => NO_FACE_CHECK),
-        detectLowQuality(photo.blob).catch(() => ({ isLowQuality: false }) as const),
+        detectLowQuality(photo.blob).catch((): QualityResult => ({ isLowQuality: false })),
         computeImageHash(photo.blob).catch(() => null),
         detectDocumentLike(photo.blob).catch(() => false),
         classifyScene(photo.blob).catch(() => ({ isUtilityPhoto: false, label: null, confidence: 0 })),
