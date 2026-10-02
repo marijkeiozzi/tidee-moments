@@ -10,7 +10,7 @@ let modelPromise: Promise<tf.LayersModel> | null = null;
 
 function loadModel(): Promise<tf.LayersModel> {
   if (!modelPromise) {
-    modelPromise = tf.loadLayersModel('/models/mobilenet/model.json');
+    modelPromise = tf.loadLayersModel(`${import.meta.env.BASE_URL}models/mobilenet/model.json`);
   }
   return modelPromise;
 }

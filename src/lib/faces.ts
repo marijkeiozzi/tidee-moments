@@ -3,15 +3,19 @@ import type { Photo } from '../db/indexedDb';
 
 let modelsLoaded: Promise<void> | null = null;
 
+// BASE_URL, not a bare '/models' — on GitHub Pages the app lives under /tidee-moments/, and a
+// root path would 404 there, silently disabling every face check.
+const MODEL_URL = `${import.meta.env.BASE_URL}models`;
+
 // Models are self-hosted in public/models — never fetched from an external CDN, so this
 // feature works fully offline and keeps every photo on-device, same as the rest of the app.
 export function loadFaceModels(): Promise<void> {
   if (!modelsLoaded) {
     modelsLoaded = Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-      faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-      faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-      faceapi.nets.faceExpressionNet.loadFromUri('/models'),
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
     ]).then(() => undefined);
   }
   return modelsLoaded;
