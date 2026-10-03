@@ -155,10 +155,8 @@ export default function App() {
     if (tab === 'sort') refreshInbox();
   }, [tab, refreshKeptWithoutAlbumCount, refreshInbox]);
 
-  async function handleFilesSelected(entries: NewPhotoEntry[]) {
-    const result = await addPhotos(entries);
-    await refreshInbox();
-    return result;
+  async function handleSavePhotos(entries: NewPhotoEntry[]) {
+    return addPhotos(entries);
   }
 
   async function handleSwipe(photo: Photo, direction: 'keep' | 'trash' | 'album') {
@@ -472,7 +470,7 @@ export default function App() {
               </p>
             </div>
           )}
-          <UploadZone onFilesSelected={handleFilesSelected} />
+          <UploadZone onSavePhotos={handleSavePhotos} onUploadComplete={refreshInbox} />
 
           {activeSelection === null && (
             <>

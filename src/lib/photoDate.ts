@@ -1,5 +1,4 @@
 import { parse } from 'exifr';
-import { detectDocumentLike } from './documentDetection';
 
 export interface FileMeta {
   capturedAt: number;
@@ -61,14 +60,14 @@ export async function getFileMeta(file: File): Promise<FileMeta> {
 
   const nameMatches = SCREENSHOT_NAME_PATTERN.test(file.name);
   const formatMatches = file.type === 'image/png' && !hasCameraExif;
-  const dimensionKey = nameMatches || formatMatches ? null : await getDimensionKey(file);
+  // Only photos WITHOUT camera EXIF can be screenshots, so only those get the (full-decode)
+  // resolution check — a camera photo never pays for it.
+  const dimensionKey = nameMatches || formatMatches || hasCameraExif ? null : await getDimensionKey(file);
   const dimensionMatches = dimensionKey !== null && KNOWN_SCREEN_RESOLUTIONS.has(dimensionKey);
 
-  // None of the screenshot signals fired (real camera photo, not a screen capture) — check
-  // whether it's a camera photo OF a document/page (receipt, form, recipe card) instead, so
-  // those land in the same separate pile as true screenshots rather than the regular sort.
-  const isDocumentPhoto =
-    !nameMatches && !formatMatches && !dimensionMatches ? await detectDocumentLike(file) : false;
-
-  return { capturedAt, isScreenshot: nameMatches || formatMatches || dimensionMatches || isDocumentPhoto };
+  // Camera photos OF a document (a receipt, a form) aren't checked here any more — that meant a
+  // second full decode of every photo during upload. The sort already runs the same document
+  // check on its shared working copy and sets those aside ("Looks like a screenshot or
+  // document"), so they still never end up in an album.
+  return { capturedAt, isScreenshot: nameMatches || formatMatches || dimensionMatches };
 }

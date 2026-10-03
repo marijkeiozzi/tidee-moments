@@ -1,3 +1,4 @@
+import { samplePixels, withAnalysisImage, type AnalysisImage } from './analysisImage';
 // Free, local detection of document/screenshot-like content — a receipt, form, whiteboard,
 // printed page, or an app screenshot with UI chrome (buttons, avatars, text blocks) — as
 // opposed to an ordinary photo. No AI, no API call.
@@ -103,18 +104,10 @@ function looksLikeDarkDocument(stats: RegionStats, minDarkFraction: number): boo
   );
 }
 
-export async function detectDocumentLike(blob: Blob): Promise<boolean> {
+export async function detectDocumentLike(input: Blob | AnalysisImage): Promise<boolean> {
   try {
-    const bitmap = await createImageBitmap(blob);
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = SAMPLE_SIZE;
-      canvas.height = SAMPLE_SIZE;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return false;
-      ctx.drawImage(bitmap, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
-
-      const { data } = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+    return await withAnalysisImage(input, (image) => {
+      const data = samplePixels(image, SAMPLE_SIZE, SAMPLE_SIZE);
       const pixelCount = SAMPLE_SIZE * SAMPLE_SIZE;
       const gray = new Float32Array(pixelCount);
       const sat = new Float32Array(pixelCount);
@@ -147,9 +140,7 @@ export async function detectDocumentLike(blob: Blob): Promise<boolean> {
         return true;
 
       return false;
-    } finally {
-      bitmap.close();
-    }
+    });
   } catch {
     return false;
   }

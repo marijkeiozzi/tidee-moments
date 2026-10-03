@@ -1,11 +1,37 @@
 import { useRef, useState } from 'react';
 import { getFileMeta } from '../lib/photoDate';
 import { convertHeicIfNeeded, isHeicFile } from '../lib/heicConvert';
-import { mapWithConcurrency, pickConcurrency } from '../lib/concurrency';
+import { isMobileDevice, mapWithConcurrency } from '../lib/concurrency';
 import type { AddPhotosResult, NewPhotoEntry } from '../db/indexedDb';
 
 interface UploadZoneProps {
-  onFilesSelected: (entries: NewPhotoEntry[]) => Promise<AddPhotosResult>;
+  // Saves photos as they're ready, without refreshing the app — called many times per upload.
+  onSavePhotos: (entries: NewPhotoEntry[]) => Promise<AddPhotosResult>;
+  // Called once at the end, so sorting starts on the whole batch rather than a partial one.
+  onUploadComplete: () => Promise<void>;
+}
+
+// Reading and saving is mostly waiting on storage, so a few more at once than the photo checks
+// use — but still few enough that a phone never holds more than a handful of photos in memory.
+function pickUploadConcurrency(): number {
+  return isMobileDevice() ? 3 : 6;
+}
+
+// Safari (iPhone, iPad, Mac) opens HEIC photos natively, so converting them to JPEG in
+// JavaScript — about a second or two per photo — is wasted time there. Tested once on the first
+// HEIC file; other browsers still convert, since they can't display HEIC at all.
+let nativeHeic: Promise<boolean> | null = null;
+async function shouldConvertHeic(file: File): Promise<boolean> {
+  if (!isHeicFile(file)) return false;
+  if (!nativeHeic) {
+    nativeHeic = createImageBitmap(file)
+      .then((bitmap) => {
+        bitmap.close();
+        return true;
+      })
+      .catch(() => false);
+  }
+  return !(await nativeHeic);
 }
 
 // How often the on-screen counter updates during a big batch — updating state on every single
@@ -13,7 +39,7 @@ interface UploadZoneProps {
 // this keeps the counter feeling live without that overhead.
 const PROGRESS_STEP = 10;
 
-export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
+export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -37,79 +63,45 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
     // starts — otherwise the drop zone looks like nothing happened for the whole time it
     // takes to process a big batch, well before the sort-progress UI has anything to show.
     setProcessing(true);
-    setStatus(null);
+    setStatus(`Adding ${files.length} photo${files.length === 1 ? '' : 's'}…`);
     try {
-      const concurrency = pickConcurrency();
-
-      // Read each file's bytes into a plain in-memory File right away, before anything else
-      // touches it — HEIC conversion, EXIF parsing, and dimension-checking each open the file
-      // again later, and a mobile picker's read grant on the original handle (especially for a
-      // cloud-backed gallery item) can be transient and expire partway through a big batch,
-      // failing later reads with no useful error. A copy made from already-read bytes has no
-      // such dependency, matching the same safeguard indexedDb.ts already applies at save time —
-      // this just makes sure every earlier step benefits from it too, not only the last one.
-      let safeDone = 0;
-      setStatus(`Reading ${files.length} photo${files.length === 1 ? '' : 's'}…`);
-      const safeFiles = await mapWithConcurrency(files, concurrency, async (file) => {
-        let safe = file;
+      // Each photo goes all the way through — read, check, convert if needed, save — and is then
+      // let go, a few at a time. The old way read EVERY photo into memory first and only then
+      // saved them, so a few thousand iPhone photos meant gigabytes held at once and the page
+      // stalled on "Saving…" or was killed by the browser.
+      let done = 0;
+      let added = 0;
+      let failed = 0;
+      let screenshots = 0;
+      await mapWithConcurrency(files, pickUploadConcurrency(), async (file) => {
         try {
+          // A plain in-memory copy first: a phone picker's read permission on the original can
+          // expire partway through a big batch, failing later reads with no useful error.
           const bytes = await file.arrayBuffer();
-          safe = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
+          const safe = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
+          // Read EXIF from the original before any HEIC conversion — conversion drops EXIF,
+          // which the screenshot check depends on.
+          const meta = await getFileMeta(safe);
+          const stored = (await shouldConvertHeic(safe)) ? await convertHeicIfNeeded(safe).catch(() => safe) : safe;
+          const result = await onSavePhotos([{ file: stored, inMemory: true, ...meta }]);
+          added += result.added;
+          failed += result.failed;
+          if (meta.isScreenshot && result.added) screenshots++;
         } catch {
-          // Couldn't read it at all — leave the original handle; it'll fail again (and get
-          // counted as failed) at save time rather than being silently skipped here.
+          failed++;
         }
-        safeDone++;
-        if (files.length > 10 && (safeDone % PROGRESS_STEP === 0 || safeDone === files.length)) {
-          setStatus(`Reading photos… ${safeDone}/${files.length}`);
-        }
-        return safe;
-      });
-
-      const heicCount = safeFiles.filter(isHeicFile).length;
-
-      // Read EXIF/screenshot metadata from the ORIGINAL file, before HEIC conversion — heic2any
-      // re-encodes through a canvas, which drops EXIF entirely (including the camera Make/Model
-      // that isScreenshot's real-photo check depends on). Reading metadata afterward meant every
-      // converted iPhone photo looked exactly like a screenshot (no camera EXIF, JPEG), silently
-      // misfiling real photos. exifr reads HEIC's own EXIF directly, so this has always been the
-      // correct order — do it first, then convert for storage/display.
-      let metaDone = 0;
-      setStatus(`Reading ${safeFiles.length} photo${safeFiles.length === 1 ? '' : 's'}…`);
-      const metas = await mapWithConcurrency(safeFiles, concurrency, async (file) => {
-        const meta = await getFileMeta(file);
-        metaDone++;
-        if (safeFiles.length > 10 && (metaDone % PROGRESS_STEP === 0 || metaDone === safeFiles.length)) {
-          setStatus(`Reading photos… ${metaDone}/${safeFiles.length}`);
-        }
-        return meta;
-      });
-
-      let convertedDone = 0;
-      if (heicCount > 0) setStatus(`Converting ${heicCount} iPhone photo${heicCount === 1 ? '' : 's'}…`);
-      const converted = await mapWithConcurrency(safeFiles, concurrency, async (file) => {
-        try {
-          return await convertHeicIfNeeded(file);
-        } catch {
-          return file;
-        } finally {
-          convertedDone++;
-          if (heicCount > 10 && (convertedDone % PROGRESS_STEP === 0 || convertedDone === files.length)) {
-            setStatus(`Converting photos… ${convertedDone}/${files.length}`);
-          }
+        done++;
+        if (done % PROGRESS_STEP === 0 || done === files.length) {
+          setStatus(`Adding photos… ${done} of ${files.length}`);
         }
       });
 
-      const entries: NewPhotoEntry[] = converted.map((file, i) => ({ file, ...metas[i] }));
-      const screenshotCount = entries.filter((e) => e.isScreenshot).length;
+      await onUploadComplete();
 
-      setStatus('Saving…');
-      const result = await onFilesSelected(entries);
-
-      const parts = [`Added ${result.added} photo${result.added === 1 ? '' : 's'}`];
-      if (screenshotCount > 0) parts.push(`${screenshotCount} screenshot${screenshotCount === 1 ? '' : 's'} set aside separately`);
-      if (result.failed > 0) {
-        parts.push(`⚠️ ${result.failed} photo${result.failed === 1 ? '' : 's'} couldn't be saved — try adding ${result.failed === 1 ? 'it' : 'them'} again`);
+      const parts = [`Added ${added} photo${added === 1 ? '' : 's'}`];
+      if (screenshots > 0) parts.push(`${screenshots} screenshot${screenshots === 1 ? '' : 's'} set aside separately`);
+      if (failed > 0) {
+        parts.push(`⚠️ ${failed} photo${failed === 1 ? '' : 's'} couldn't be added — try adding ${failed === 1 ? 'it' : 'them'} again`);
       }
       setStatus(parts.join(' · ') + '.');
     } finally {

@@ -1,5 +1,6 @@
 import * as faceapi from 'face-api.js';
-import { blobToImage, loadFaceModels } from './faces';
+import { loadFaceModels } from './faces';
+import { withAnalysisImage, type AnalysisImage } from './analysisImage';
 
 function eyeAspectRatio(eye: faceapi.Point[]): number {
   const dist = (a: faceapi.Point, b: faceapi.Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -63,9 +64,12 @@ const NO_FACES: FaceCheck = {
 // same face-landmark model already loaded for person-clustering (lib/faces.ts). No AI/API
 // call. Photos with no detected face return the neutral NO_FACES result (nothing to judge, so
 // never auto-flagged for it, and never preferred by the group-survivor picker either).
-export async function detectClosedEyes(blob: Blob): Promise<FaceCheck> {
+export async function detectClosedEyes(input: Blob | AnalysisImage): Promise<FaceCheck> {
   await loadFaceModels();
-  const img = await blobToImage(blob);
+  return withAnalysisImage(input, (image) => analyzeFaces(image.canvas));
+}
+
+async function analyzeFaces(img: HTMLCanvasElement): Promise<FaceCheck> {
   const detections = await faceapi
     .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
     .withFaceLandmarks()

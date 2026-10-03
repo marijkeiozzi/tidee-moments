@@ -58,13 +58,19 @@ interface PhotoAppDB extends DBSchema {
     key: string;
     value: Person;
   };
+  // Small JPEG previews for grids, made during the sort — kept apart from the photo records so
+  // writing one never rewrites (and re-copies) the full-size original.
+  thumbs: {
+    key: string;
+    value: { id: string; blob: Blob };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<PhotoAppDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<PhotoAppDB>('photo-app', 5, {
+    dbPromise = openDB<PhotoAppDB>('photo-app', 6, {
       upgrade(db, oldVersion, _newVersion, tx) {
         let photos;
         if (oldVersion < 1) {
@@ -108,6 +114,9 @@ function getDb() {
         if (oldVersion < 5) {
           db.createObjectStore('people', { keyPath: 'id' });
         }
+        if (oldVersion < 6) {
+          db.createObjectStore('thumbs', { keyPath: 'id' });
+        }
       },
     });
   }
@@ -116,6 +125,9 @@ function getDb() {
 
 export interface NewPhotoEntry {
   file: File;
+  // Already a plain in-memory copy (not a live handle from the file picker) — saved as is,
+  // without reading the bytes a second time.
+  inMemory?: boolean;
   capturedAt: number;
   isScreenshot: boolean;
 }
@@ -136,7 +148,7 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
   // Bounded concurrency, sized to the device — reading every file's full bytes into memory at
   // once for a batch of thousands would spike memory enough to hang the tab; too low a cap
   // just leaves cores idle. See lib/concurrency.ts.
-  await mapWithConcurrency(entries, pickConcurrency(), async ({ file, capturedAt, isScreenshot }) => {
+  await mapWithConcurrency(entries, pickConcurrency(), async ({ file, capturedAt, isScreenshot, inMemory }) => {
     try {
       // Read the file's bytes into a plain, in-memory Blob before storing it — a raw File
       // from an <input type="file"> pick can end up saved as a live reference to the file on
@@ -144,8 +156,11 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
       // temporary read permission for the pick session expires (surfaces as
       // "NotReadableError: permission problems" on a later page load). A Blob built from
       // already-read bytes has no such dependency and survives reloads.
-      const bytes = await file.arrayBuffer();
-      const safeBlob = new Blob([bytes], { type: file.type || 'image/jpeg' });
+      const safeBlob = inMemory
+        ? file.type
+          ? file
+          : new Blob([file], { type: 'image/jpeg' })
+        : new Blob([await file.arrayBuffer()], { type: file.type || 'image/jpeg' });
       await db.put('photos', {
         id: crypto.randomUUID(),
         blob: safeBlob,
@@ -209,7 +224,17 @@ export async function restorePhotos(ids: string[]): Promise<void> {
 
 export async function deletePhotosForever(ids: string[]): Promise<void> {
   const db = await getDb();
-  await Promise.all(ids.map((id) => db.delete('photos', id)));
+  await Promise.all(ids.flatMap((id) => [db.delete('photos', id), db.delete('thumbs', id)]));
+}
+
+export async function getThumb(id: string): Promise<Blob | null> {
+  const db = await getDb();
+  return (await db.get('thumbs', id))?.blob ?? null;
+}
+
+export async function saveThumb(id: string, blob: Blob): Promise<void> {
+  const db = await getDb();
+  await db.put('thumbs', { id, blob });
 }
 
 // Runs once per app load. Photos trashed before trashedAt existed get the full grace period
@@ -223,6 +248,7 @@ export async function purgeExpiredTrash(now = Date.now()): Promise<number> {
       await db.put('photos', { ...photo, trashedAt: now });
     } else if (now - photo.trashedAt >= TRASH_RETENTION_DAYS * DAY_MS) {
       await db.delete('photos', photo.id);
+      await db.delete('thumbs', photo.id);
       purged++;
     }
   }

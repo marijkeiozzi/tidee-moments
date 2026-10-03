@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { Album } from '../db/indexedDb';
+import type { Album, Photo } from '../db/indexedDb';
 import { getPhotosByAlbum } from '../db/indexedDb';
-import { getDisplayableBlob } from '../hooks/usePhotoUrl';
+import PhotoThumbImage from './PhotoThumbImage';
 import { pickCoverPhoto } from '../lib/pickCover';
 
 interface AlbumCardProps {
@@ -11,27 +11,19 @@ interface AlbumCardProps {
 }
 
 export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
-  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [cover, setCover] = useState<Photo | null>(null);
   const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | null = null;
-
     getPhotosByAlbum(album.id).then(async (photos) => {
       if (cancelled) return;
       setCount(photos.length);
-      const cover = await pickCoverPhoto(photos);
-      if (cancelled || !cover) return;
-      const blob = await getDisplayableBlob(cover);
-      if (cancelled) return;
-      objectUrl = URL.createObjectURL(blob);
-      setCoverUrl(objectUrl);
+      const picked = await pickCoverPhoto(photos);
+      if (!cancelled) setCover(picked);
     });
-
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [album.id]);
 
@@ -39,11 +31,7 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
     <div className="relative bg-white border border-black/5 rounded-2xl overflow-hidden hover:border-[#BB5133]/30 hover:shadow-md hover:-translate-y-0.5 transition-all">
       <button onClick={onOpen} className="w-full text-left">
         <div className="aspect-square bg-[#EFE9DD] flex items-center justify-center">
-          {coverUrl ? (
-            <img src={coverUrl} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-3xl opacity-40">📁</span>
-          )}
+          {cover ? <PhotoThumbImage photo={cover} /> : <span className="text-3xl opacity-40">📁</span>}
         </div>
         <div className="p-3">
           <p className="font-semibold text-[#231F1B] text-sm truncate">{album.name}</p>

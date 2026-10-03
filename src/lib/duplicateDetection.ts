@@ -1,21 +1,14 @@
+import { samplePixels, withAnalysisImage, type AnalysisImage } from './analysisImage';
 // Free, local near-duplicate detection via a difference hash (dHash) — no AI/API call.
 // Each photo gets a coarse 64-bit fingerprint of its gradient pattern; near-identical
 // fingerprints (small Hamming distance) mean the photos look alike, regardless of when
 // they were taken — catching duplicates the time-based burst detector would miss.
 
-export async function computeImageHash(blob: Blob): Promise<bigint> {
-  const bitmap = await createImageBitmap(blob);
-  try {
+export async function computeImageHash(input: Blob | AnalysisImage): Promise<bigint> {
+  return withAnalysisImage(input, (image) => {
     const w = 9;
     const h = 8;
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0, w, h);
-
-    const { data } = ctx.getImageData(0, 0, w, h);
+    const data = samplePixels(image, w, h);
     const gray = new Float32Array(w * h);
     for (let i = 0; i < w * h; i++) {
       gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
@@ -30,9 +23,7 @@ export async function computeImageHash(blob: Blob): Promise<bigint> {
       }
     }
     return hash;
-  } finally {
-    bitmap.close();
-  }
+  });
 }
 
 // Classic SWAR bit-counting trick on a 32-bit int — dramatically faster than looping bit-by-bit

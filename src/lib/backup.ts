@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { deliverFile } from './saveFile';
 import type { Album, Person, Photo } from '../db/indexedDb';
 import { getAllAlbums, getAllPeople, getAllPhotos, getPhotosByIds, importLibraryRecords } from '../db/indexedDb';
 
@@ -76,17 +77,6 @@ async function readPhotoBytes(photo: Photo): Promise<ArrayBuffer> {
   }
 }
 
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
 export interface BackupResult {
   photos: number;
   failed: number;
@@ -147,7 +137,11 @@ export async function createBackup(onProgress: (done: number, total: number) => 
     // Photos are already compressed — storing them as-is is much faster and no bigger.
     const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
     const suffix = plan.length > 1 ? `-part${i + 1}of${plan.length}` : '';
-    download(blob, `tidee-moments-backup-${stamp}${suffix}.zip`);
+    deliverFile(
+      blob,
+      `tidee-moments-backup-${stamp}${suffix}.zip`,
+      plan.length > 1 ? `Backup part ${i + 1} of ${plan.length}` : 'Your backup',
+    );
   }
 
   setLastBackup({

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Album, Person, Photo } from '../db/indexedDb';
 import { assignPhotoToAlbum, createAlbum, getAllAlbums, getPhotosByIds, renamePerson } from '../db/indexedDb';
 import { buildShareablePage } from '../lib/sharePage';
+import { deliverFile } from '../lib/saveFile';
 import PhotoThumbImage from './PhotoThumbImage';
 
 interface PersonGridProps {
@@ -41,12 +42,7 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
     setBuildingPage(true);
     try {
       const { blob } = await buildShareablePage(name || 'Photos', photos);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${name || 'photos'}.html`;
-      a.click();
-      URL.revokeObjectURL(url);
+      deliverFile(blob, `${name || 'photos'}.html`, `${name || 'Photos'} — share page`);
     } finally {
       setBuildingPage(false);
     }

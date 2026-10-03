@@ -8,7 +8,9 @@ import { detectDocumentLike } from './documentDetection';
 import { classifyScene } from './sceneClassification';
 import { summarizeScene } from './sceneCategories';
 import { scorePhotoQuality } from './photoScore';
-import { mapWithConcurrency, pickConcurrency } from './concurrency';
+import { mapWithConcurrency, pickPhotoConcurrency } from './concurrency';
+import { decodeForAnalysis, makeThumbnail, releaseAnalysisImage } from './analysisImage';
+import { saveThumb } from '../db/indexedDb';
 import { classifyPhoto, type ClassifySignals, type DuplicateContext, type Sensitivity } from './classifyPhoto';
 
 export type { Sensitivity };
@@ -71,6 +73,47 @@ interface Check extends ClassifySignals {
 
 const NO_FACE_CHECK = { eyesClosed: false, facingAway: false, faceCount: 0, openEyesFraction: 1, smileScore: 0, maxFaceArea: 0 };
 
+// Per-photo signals for this page session. Detection is the slow part; the keep/set-aside
+// decision on top of it is instant — so changing sensitivity or tapping "Start over" re-decides
+// from these instead of re-analysing every photo.
+const signalCache = new Map<string, Omit<Check, 'photo'>>();
+
+async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
+  const image = await decodeForAnalysis(photo.blob);
+  try {
+    const [{ isBlurry, sharpness }, face, quality, hash, isDocument, scene, thumb] = await Promise.all([
+      detectBlur(image).catch(() => ({ isBlurry: false, sharpness: Infinity })),
+      detectClosedEyes(image).catch(() => NO_FACE_CHECK),
+      detectLowQuality(image).catch((): QualityResult => ({ isLowQuality: false })),
+      computeImageHash(image).catch(() => null),
+      detectDocumentLike(image).catch(() => false),
+      classifyScene(image).catch(() => summarizeScene([], null)),
+      makeThumbnail(image).catch(() => null),
+    ]);
+    if (thumb) saveThumb(photo.id, thumb).catch(() => {});
+    return {
+      sharpness,
+      hash,
+      isBlurry,
+      isLowQuality: quality.isLowQuality,
+      qualityReason: quality.reason,
+      isDocument,
+      isUtilityPhoto: scene.isUtilityPhoto,
+      utilityLabel: scene.label,
+      utilityConfidence: scene.confidence,
+      hasPerson: scene.hasPerson,
+      eyesClosed: face.eyesClosed,
+      facingAway: face.facingAway,
+      faceCount: face.faceCount,
+      openEyesFraction: face.openEyesFraction,
+      smileScore: face.smileScore,
+      maxFaceArea: face.maxFaceArea,
+    };
+  } finally {
+    releaseAnalysisImage(image);
+  }
+}
+
 // Entirely on-device — blur, closed-eyes, exposure/resolution, and near-duplicate detection.
 // No AI, no API call, no cost, works offline.
 export async function runAutoSort(
@@ -82,50 +125,32 @@ export async function runAutoSort(
   const toDelete: DeleteCandidate[] = [];
   let done = 0;
 
-  const checks = await mapWithConcurrency(photos, pickConcurrency(), async (photo) => {
+  const checks = await mapWithConcurrency(photos, pickPhotoConcurrency(), async (photo) => {
     let check: Check;
-    try {
-      const [{ isBlurry, sharpness }, face, quality, hash, isDocument, scene] = await Promise.all([
-        detectBlur(photo.blob).catch(() => ({ isBlurry: false, sharpness: Infinity })),
-        detectClosedEyes(photo.blob).catch(() => NO_FACE_CHECK),
-        detectLowQuality(photo.blob).catch((): QualityResult => ({ isLowQuality: false })),
-        computeImageHash(photo.blob).catch(() => null),
-        detectDocumentLike(photo.blob).catch(() => false),
-        classifyScene(photo.blob).catch(() => summarizeScene([], null)),
-      ]);
-      check = {
-        photo,
-        sharpness,
-        hash,
-        isBlurry,
-        isLowQuality: quality.isLowQuality,
-        qualityReason: quality.reason,
-        isDocument,
-        isUtilityPhoto: scene.isUtilityPhoto,
-        utilityLabel: scene.label,
-        utilityConfidence: scene.confidence,
-        hasPerson: scene.hasPerson,
-        eyesClosed: face.eyesClosed,
-        facingAway: face.facingAway,
-        faceCount: face.faceCount,
-        openEyesFraction: face.openEyesFraction,
-        smileScore: face.smileScore,
-        maxFaceArea: face.maxFaceArea,
-      };
-    } catch {
-      // If a check fails for a photo, default to keep — never auto-delete on an error.
-      check = {
-        photo,
-        sharpness: Infinity,
-        hash: null,
-        isBlurry: false,
-        isLowQuality: false,
-        isDocument: false,
-        isUtilityPhoto: false,
-        utilityLabel: null,
-        utilityConfidence: 0,
-        ...NO_FACE_CHECK,
-      };
+    const cached = signalCache.get(photo.id);
+    if (cached) {
+      check = { photo, ...cached };
+    } else {
+      try {
+        const signals = await analyzePhoto(photo);
+        signalCache.set(photo.id, signals);
+        check = { photo, ...signals };
+      } catch {
+        // If a photo can't be analysed, default to keep — never auto-delete on an error. Not
+        // cached, so a later re-sort gets another try.
+        check = {
+          photo,
+          sharpness: Infinity,
+          hash: null,
+          isBlurry: false,
+          isLowQuality: false,
+          isDocument: false,
+          isUtilityPhoto: false,
+          utilityLabel: null,
+          utilityConfidence: 0,
+          ...NO_FACE_CHECK,
+        };
+      }
     }
     done++;
     if (done % PROGRESS_STEP === 0 || done === photos.length) onProgress(done, photos.length);

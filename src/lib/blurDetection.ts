@@ -1,3 +1,4 @@
+import { BLUR_SAMPLE_SIDE, withAnalysisImage, type AnalysisImage } from './analysisImage';
 // Free, local blur detection — no AI/API call, runs entirely in the browser.
 // Measures the variance of the Laplacian (edge response) of a downscaled grayscale copy
 // of the photo. Sharp photos have lots of high-frequency detail (high variance); blurry
@@ -6,7 +7,6 @@
 // are closed or judge composition), but it catches genuinely out-of-focus/motion-blurred
 // shots reliably at zero cost.
 
-const ANALYSIS_DIM = 300;
 const BLUR_VARIANCE_THRESHOLD = 120;
 
 export interface BlurResult {
@@ -14,20 +14,12 @@ export interface BlurResult {
   sharpness: number;
 }
 
-export async function detectBlur(blob: Blob): Promise<BlurResult> {
-  const bitmap = await createImageBitmap(blob);
-  try {
-    const scale = Math.min(1, ANALYSIS_DIM / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+export async function detectBlur(input: Blob | AnalysisImage): Promise<BlurResult> {
+  return withAnalysisImage(input, (image) => {
+    // Pre-scaled to BLUR_SAMPLE_SIDE straight from the original (see analysisImage.ts).
+    const { width, height } = image.blurSample;
+    const ctx = image.blurSample.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0, width, height);
-
     const { data } = ctx.getImageData(0, 0, width, height);
     const gray = new Float32Array(width * height);
     for (let i = 0; i < width * height; i++) {
@@ -53,7 +45,5 @@ export async function detectBlur(blob: Blob): Promise<BlurResult> {
     const variance = sumSq / count - mean * mean;
 
     return { isBlurry: variance < BLUR_VARIANCE_THRESHOLD, sharpness: variance };
-  } finally {
-    bitmap.close();
-  }
+  });
 }

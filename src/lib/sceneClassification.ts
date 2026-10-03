@@ -7,6 +7,7 @@
 // would otherwise collide with the ancient tfjs-core bundled inside face-api.js on the main
 // thread (two versions fighting over the same global backend registry).
 import { summarizeScene, type SceneClassification } from './sceneCategories';
+import type { AnalysisImage } from './analysisImage';
 
 export type { SceneClassification };
 
@@ -28,13 +29,18 @@ function getWorker(): Worker {
   return worker;
 }
 
-export async function classifyScene(blob: Blob): Promise<SceneClassification> {
+// Given the sort's already-decoded working copy, hands the worker a small ImageBitmap
+// (transferred, not copied) instead of the original file, so the worker never decodes the
+// full-size photo again.
+export async function classifyScene(input: Blob | AnalysisImage): Promise<SceneClassification> {
   try {
     const w = getWorker();
     const id = nextId++;
+    const bitmap = input instanceof Blob ? null : await createImageBitmap(input.canvas);
     return await new Promise<SceneClassification>((resolve) => {
       pending.set(id, resolve);
-      w.postMessage({ id, blob });
+      if (bitmap) w.postMessage({ id, bitmap }, [bitmap]);
+      else w.postMessage({ id, blob: input });
     });
   } catch {
     return summarizeScene([], null);

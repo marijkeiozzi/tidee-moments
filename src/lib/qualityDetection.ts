@@ -1,3 +1,4 @@
+import { samplePixels, withAnalysisImage, type AnalysisImage } from './analysisImage';
 // Free, local quality detection — no AI/API call. Catches the two most common "low quality"
 // problems a formula can reliably judge: exposure (too dark/too bright) and resolution
 // (too small to be a real photo, e.g. a thumbnail or icon that snuck into the camera roll).
@@ -13,21 +14,13 @@ export interface QualityResult {
   reason?: 'low-resolution' | 'too-dark' | 'overexposed';
 }
 
-export async function detectLowQuality(blob: Blob): Promise<QualityResult> {
-  const bitmap = await createImageBitmap(blob);
-  try {
-    if (bitmap.width < MIN_DIMENSION || bitmap.height < MIN_DIMENSION) {
+export async function detectLowQuality(input: Blob | AnalysisImage): Promise<QualityResult> {
+  return withAnalysisImage(input, (image): QualityResult => {
+    if (image.naturalWidth < MIN_DIMENSION || image.naturalHeight < MIN_DIMENSION) {
       return { isLowQuality: true, reason: 'low-resolution' };
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = SAMPLE_SIZE;
-    canvas.height = SAMPLE_SIZE;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('no 2d context');
-    ctx.drawImage(bitmap, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
-
-    const { data } = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+    const data = samplePixels(image, SAMPLE_SIZE, SAMPLE_SIZE);
     let sum = 0;
     const pixelCount = SAMPLE_SIZE * SAMPLE_SIZE;
     for (let i = 0; i < pixelCount; i++) {
@@ -39,7 +32,5 @@ export async function detectLowQuality(blob: Blob): Promise<QualityResult> {
     if (avgLuminance > BRIGHT_LUMINANCE_THRESHOLD) return { isLowQuality: true, reason: 'overexposed' };
 
     return { isLowQuality: false };
-  } finally {
-    bitmap.close();
-  }
+  });
 }

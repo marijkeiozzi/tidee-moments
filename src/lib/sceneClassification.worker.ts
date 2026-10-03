@@ -72,11 +72,11 @@ async function detectObjects(bitmap: ImageBitmap): Promise<SceneDetection[]> {
   return detections.map((d) => ({ label: d.class, score: d.score, area: (d.bbox[2] * d.bbox[3]) / (w * h) }));
 }
 
-self.onmessage = async (e: MessageEvent<{ id: number; blob: Blob }>) => {
+self.onmessage = async (e: MessageEvent<{ id: number; blob?: Blob; bitmap?: ImageBitmap }>) => {
   const { id, blob } = e.data;
   let result: SceneClassification;
   try {
-    const bitmap = await createImageBitmap(blob);
+    const bitmap = e.data.bitmap ?? (await createImageBitmap(blob!));
     try {
       const top = await predictTopK(bitmap);
       const detections = await detectObjects(bitmap).catch(() => null);

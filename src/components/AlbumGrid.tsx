@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import type { Album, Photo } from '../db/indexedDb';
 import { assignPhotoToAlbum, createAlbum, getAllAlbums, setPhotoNote } from '../db/indexedDb';
 import { buildShareablePage } from '../lib/sharePage';
+import { deliverFile } from '../lib/saveFile';
 import { photoFilename } from '../lib/filename';
 import VirtualPhotoGrid from './VirtualPhotoGrid';
 
@@ -120,12 +121,7 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, ke
       }
 
       const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      deliverFile(blob, `${title}.zip`, `${title} — photos (zip)`);
 
       setExportNote(
         failed > 0 ? `Exported ${included} of ${photos.length} photos — ${failed} couldn't be read.` : null,
@@ -147,12 +143,7 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, ke
         return;
       }
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title}.html`;
-      a.click();
-      URL.revokeObjectURL(url);
+      deliverFile(blob, `${title}.html`, `${title} — share page`);
 
       setExportNote(failed > 0 ? `Included ${included} of ${photos.length} photos — ${failed} couldn't be read.` : null);
     } catch (err) {

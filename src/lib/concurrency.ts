@@ -5,6 +5,18 @@
 
 // navigator.hardwareConcurrency reports logical cores; capped well below that since each
 // "worker" here can itself spin up canvas/WASM work, not just wait on I/O.
+export function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
+}
+
+// Photo work (decoding, the face and scene models) is memory-heavy: a phone that runs several
+// at once runs out of memory and Safari reloads or kills the page. Two at a time on phones.
+export function pickPhotoConcurrency(): number {
+  return isMobileDevice() ? 2 : pickConcurrency(4);
+}
+
 export function pickConcurrency(cap = 8): number {
   const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : undefined;
   return Math.max(2, Math.min(cap, cores ?? 4));

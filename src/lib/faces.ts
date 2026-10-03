@@ -1,5 +1,6 @@
 import * as faceapi from 'face-api.js';
 import type { Photo } from '../db/indexedDb';
+import { withAnalysisImage } from './analysisImage';
 
 let modelsLoaded: Promise<void> | null = null;
 
@@ -21,29 +22,17 @@ export function loadFaceModels(): Promise<void> {
   return modelsLoaded;
 }
 
-export function blobToImage(blob: Blob): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = (err) => {
-      URL.revokeObjectURL(url);
-      reject(err);
-    };
-    img.src = url;
-  });
-}
-
+// Works on the small shared working copy (see analysisImage.ts) rather than the full-size
+// original — the face detector scales everything to 416px anyway, and a People scan runs over
+// every kept photo.
 export async function getFaceDescriptors(photo: Photo): Promise<Float32Array[]> {
-  const img = await blobToImage(photo.blob);
-  const detections = await faceapi
-    .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
-    .withFaceLandmarks()
-    .withFaceDescriptors();
-  return detections.map((d) => d.descriptor);
+  return withAnalysisImage(photo.blob, async (image) => {
+    const detections = await faceapi
+      .detectAllFaces(image.canvas, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+    return detections.map((d) => d.descriptor);
+  });
 }
 
 export interface FaceCluster {

@@ -1,5 +1,5 @@
 import type { Photo } from '../db/indexedDb';
-import { getPhotosByIds } from '../db/indexedDb';
+import { getPhotosByIds, getThumb, saveThumb } from '../db/indexedDb';
 import { getDisplayableBlob } from '../hooks/usePhotoUrl';
 
 // Grids show hundreds or thousands of photos. Handing each <img> the full-size original
@@ -57,6 +57,11 @@ async function shrink(blob: Blob): Promise<Blob> {
 // in-memory copy can't be read — Safari can invalidate a Blob it handed out from IndexedDB —
 // the photo is re-read fresh from storage before giving up.
 export async function createThumbnailUrl(photo: Photo, { fresh = false } = {}): Promise<string> {
+  // Fast path: the small preview saved when the photo was sorted — no decoding at all.
+  if (!fresh) {
+    const saved = await getThumb(photo.id).catch(() => null);
+    if (saved) return URL.createObjectURL(saved);
+  }
   return withSlot(async () => {
     let source = photo;
     if (fresh) {
@@ -65,7 +70,9 @@ export async function createThumbnailUrl(photo: Photo, { fresh = false } = {}): 
     }
     const blob = await getDisplayableBlob(source);
     try {
-      return URL.createObjectURL(await shrink(blob));
+      const small = await shrink(blob);
+      if (small !== blob) saveThumb(photo.id, small).catch(() => {});
+      return URL.createObjectURL(small);
     } catch (err) {
       if (fresh) throw err;
       const [stored] = await getPhotosByIds([photo.id]);
