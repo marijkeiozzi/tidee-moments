@@ -96,6 +96,23 @@ export const SCENE_THRESHOLDS = {
   objectDominance: 3,
 };
 
+// The person/pet/food detector is the slowest step of the whole sort, and its answer only
+// matters for a photo MobileNet already thinks is mostly an object — for anything else
+// isUtilityPhoto is false whatever the detector says. So it only runs when this is true.
+export function couldBeObjectPhoto(top: ScenePrediction[]): boolean {
+  let objectMass = 0;
+  let otherMass = 0;
+  let animalMass = 0;
+  for (const p of top) {
+    if (categoryOf(p.index) === 'object') objectMass += p.probability;
+    else {
+      otherMass += p.probability;
+      if (categoryOf(p.index) === 'animal') animalMass += p.probability;
+    }
+  }
+  return animalMass < 0.3 && objectMass >= SCENE_THRESHOLDS.objectMass && objectMass >= SCENE_THRESHOLDS.objectDominance * otherMass;
+}
+
 export function summarizeScene(top: ScenePrediction[], detections: SceneDetection[] | null): SceneClassification {
   const hasPerson = (detections ?? []).some((d) => d.label === 'person' && d.score >= SCENE_THRESHOLDS.personScore);
   const detectedAnimal = (detections ?? []).some((d) => ANIMAL_DETECTIONS.has(d.label) && d.score >= SCENE_THRESHOLDS.animalScore);

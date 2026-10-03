@@ -11,23 +11,50 @@
 //    ImageNet has no "person" class at all, and face detection misses sleeping babies, backs
 //    of heads and people in profile, so this is what keeps those photos safe.
 import * as tf from '@tensorflow/tfjs';
+import { setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import { IMAGENET_CLASSES } from './imagenetClasses';
-import { summarizeScene, type SceneClassification, type SceneDetection, type ScenePrediction } from './sceneCategories';
+import { couldBeObjectPhoto, summarizeScene, type SceneClassification, type SceneDetection, type ScenePrediction } from './sceneCategories';
+import type { DetectMode } from './sceneClassification';
 
 const MODEL_ROOT = `${import.meta.env.BASE_URL}models`;
+
+// Inside a worker the GPU backend usually isn't available, and TF.js then silently falls back to
+// its plain-JavaScript 'cpu' backend — measured at ~3-4 s per photo for these two models. The
+// WebAssembly backend (SIMD) runs the same models several times faster and works in workers on
+// every current browser, iPhone Safari included. Its .wasm files are self-hosted like the models.
+// (The multi-threaded variant needs cross-origin isolation headers GitHub Pages can't send.)
+let backendReady: Promise<void> | null = null;
+function ensureBackend(): Promise<void> {
+  if (!backendReady) {
+    backendReady = (async () => {
+      setWasmPaths(`${import.meta.env.BASE_URL}tfjs-wasm/`);
+      for (const name of ['wasm', 'webgl', 'cpu']) {
+        try {
+          if (await tf.setBackend(name)) break;
+        } catch {
+          // try the next one
+        }
+      }
+      await tf.ready();
+    })();
+  }
+  return backendReady;
+}
 
 let mobilenetPromise: Promise<tf.LayersModel> | null = null;
 let detectorPromise: Promise<cocoSsd.ObjectDetection> | null = null;
 
 function loadMobilenet(): Promise<tf.LayersModel> {
-  if (!mobilenetPromise) mobilenetPromise = tf.loadLayersModel(`${MODEL_ROOT}/mobilenet/model.json`);
+  if (!mobilenetPromise) mobilenetPromise = ensureBackend().then(() => tf.loadLayersModel(`${MODEL_ROOT}/mobilenet/model.json`));
   return mobilenetPromise;
 }
 
 function loadDetector(): Promise<cocoSsd.ObjectDetection> {
   if (!detectorPromise) {
-    detectorPromise = cocoSsd.load({ base: 'lite_mobilenet_v2', modelUrl: `${MODEL_ROOT}/coco-ssd/model.json` });
+    detectorPromise = ensureBackend().then(() =>
+      cocoSsd.load({ base: 'lite_mobilenet_v2', modelUrl: `${MODEL_ROOT}/coco-ssd/model.json` }),
+    );
   }
   return detectorPromise;
 }
@@ -72,14 +99,17 @@ async function detectObjects(bitmap: ImageBitmap): Promise<SceneDetection[]> {
   return detections.map((d) => ({ label: d.class, score: d.score, area: (d.bbox[2] * d.bbox[3]) / (w * h) }));
 }
 
-self.onmessage = async (e: MessageEvent<{ id: number; blob?: Blob; bitmap?: ImageBitmap }>) => {
-  const { id, blob } = e.data;
+self.onmessage = async (e: MessageEvent<{ id: number; blob?: Blob; bitmap?: ImageBitmap; detect?: DetectMode }>) => {
+  const { id, blob, detect = 'auto' } = e.data;
   let result: SceneClassification;
   try {
     const bitmap = e.data.bitmap ?? (await createImageBitmap(blob!));
     try {
       const top = await predictTopK(bitmap);
-      const detections = await detectObjects(bitmap).catch(() => null);
+      // Skipped detection is reported as null ("couldn't rule anyone out"), which never lets a
+      // photo count as just an object — the safe direction.
+      const runDetector = detect === 'always' || (detect === 'auto' && couldBeObjectPhoto(top));
+      const detections = runDetector ? await detectObjects(bitmap).catch(() => null) : null;
       result = summarizeScene(top, detections);
     } finally {
       bitmap.close();

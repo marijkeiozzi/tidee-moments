@@ -5,7 +5,7 @@
 // (a thing on its own — should be set aside, except baby items/clothing, which are protected).
 // Rows: [photo, label, MobileNet top-5 [classIndex, probability], COCO-SSD [label, score, area]].
 // Run with `npx tsx src/lib/sceneCategories.test.ts`.
-import { summarizeScene } from './sceneCategories';
+import { couldBeObjectPhoto, summarizeScene } from './sceneCategories';
 import { IMAGENET_CLASSES } from './imagenetClasses';
 
 type Row = [string, 'memory' | 'scene' | 'food' | 'ambig' | 'object', [number, number][], [string, number, number][]];
@@ -122,11 +122,15 @@ const ROWS: Row[] = [
 
 const counts: Record<string, { flagged: number; total: number }> = {};
 const wronglyFlagged: string[] = [];
+const skippedButNeeded: string[] = [];
 for (const [name, label, top, det] of ROWS) {
   const result = summarizeScene(
     top.map(([index, probability]) => ({ index, probability, label: IMAGENET_CLASSES[index] })),
     det.map(([l, score, area]) => ({ label: l, score, area })),
   );
+  // The sort skips the (slow) detector unless couldBeObjectPhoto says it might matter — that
+  // shortcut must never hide a photo the full check would have flagged.
+  if (result.isUtilityPhoto && !couldBeObjectPhoto(result.top)) skippedButNeeded.push(name);
   const c = (counts[label] ??= { flagged: 0, total: 0 });
   c.total++;
   if (result.isUtilityPhoto) {
@@ -140,6 +144,10 @@ const objects = counts.object;
 let failed = false;
 if (wronglyFlagged.length > 0) {
   console.error(`FAIL  memories/scenes/food flagged as objects: ${wronglyFlagged.join(', ')}`);
+  failed = true;
+}
+if (skippedButNeeded.length > 0) {
+  console.error(`FAIL  detector shortcut would have skipped: ${skippedButNeeded.join(', ')}`);
   failed = true;
 }
 // Baby things and clothing are deliberately protected, so not every "object" row is caught.

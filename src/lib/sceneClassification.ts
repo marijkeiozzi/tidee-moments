@@ -32,15 +32,21 @@ function getWorker(): Worker {
 // Given the sort's already-decoded working copy, hands the worker a small ImageBitmap
 // (transferred, not copied) instead of the original file, so the worker never decodes the
 // full-size photo again.
-export async function classifyScene(input: Blob | AnalysisImage): Promise<SceneClassification> {
+// 'auto': run the person/pet/food detector only when MobileNet says the photo is mostly an
+// object. 'always': also when another check says it looks like a document (which is only set
+// aside with nobody in it). 'never': a face was already found, so nothing here can change the
+// outcome.
+export type DetectMode = 'auto' | 'always' | 'never';
+
+export async function classifyScene(input: Blob | AnalysisImage, detect: DetectMode = 'auto'): Promise<SceneClassification> {
   try {
     const w = getWorker();
     const id = nextId++;
     const bitmap = input instanceof Blob ? null : await createImageBitmap(input.canvas);
     return await new Promise<SceneClassification>((resolve) => {
       pending.set(id, resolve);
-      if (bitmap) w.postMessage({ id, bitmap }, [bitmap]);
-      else w.postMessage({ id, blob: input });
+      if (bitmap) w.postMessage({ id, bitmap, detect }, [bitmap]);
+      else w.postMessage({ id, blob: input, detect });
     });
   } catch {
     return summarizeScene([], null);

@@ -81,15 +81,19 @@ const signalCache = new Map<string, Omit<Check, 'photo'>>();
 async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
   const image = await decodeForAnalysis(photo.blob);
   try {
-    const [{ isBlurry, sharpness }, face, quality, hash, isDocument, scene, thumb] = await Promise.all([
+    const [{ isBlurry, sharpness }, face, quality, hash, isDocument, thumb] = await Promise.all([
       detectBlur(image).catch(() => ({ isBlurry: false, sharpness: Infinity })),
       detectClosedEyes(image).catch(() => NO_FACE_CHECK),
       detectLowQuality(image).catch((): QualityResult => ({ isLowQuality: false })),
       computeImageHash(image).catch(() => null),
       detectDocumentLike(image).catch(() => false),
-      classifyScene(image).catch(() => summarizeScene([], null)),
       makeThumbnail(image).catch(() => null),
     ]);
+    // After the face check, so the slow person detector is skipped whenever a face already
+    // settles it (see DetectMode).
+    const scene = await classifyScene(image, face.faceCount > 0 ? 'never' : isDocument ? 'always' : 'auto').catch(() =>
+      summarizeScene([], null),
+    );
     if (thumb) saveThumb(photo.id, thumb).catch(() => {});
     return {
       sharpness,
