@@ -1,17 +1,14 @@
-// Free, local scene/object classification — MobileNet v1 (self-hosted in public/models, same
-// offline-first pattern as the face-detection models), no AI/API call. Used to catch
-// reference/utility photos (a laptop screen, a window frame, a car for sale) that pass every
-// quality check but aren't a family memory — pure pixel-quality heuristics can't tell those
-// apart from a genuine keeper, since nothing about them is technically "wrong".
+// Free, local "what is this photo of?" — MobileNet (what's mostly in frame) plus COCO-SSD
+// (is anyone in it), both self-hosted in public/models so no photo ever leaves the device.
+// Used to catch photos of things — a pot being sold, an appliance, a lamp — that pass every
+// quality check but aren't a family memory. The decision itself lives in sceneCategories.ts.
 //
 // Runs inside a Web Worker (see sceneClassification.worker.ts) — the modern tfjs it needs
 // would otherwise collide with the ancient tfjs-core bundled inside face-api.js on the main
 // thread (two versions fighting over the same global backend registry).
-export interface SceneClassification {
-  isUtilityPhoto: boolean;
-  label: string | null;
-  confidence: number;
-}
+import { summarizeScene, type SceneClassification } from './sceneCategories';
+
+export type { SceneClassification };
 
 let worker: Worker | null = null;
 let nextId = 0;
@@ -40,6 +37,6 @@ export async function classifyScene(blob: Blob): Promise<SceneClassification> {
       w.postMessage({ id, blob });
     });
   } catch {
-    return { isUtilityPhoto: false, label: null, confidence: 0 };
+    return summarizeScene([], null);
   }
 }

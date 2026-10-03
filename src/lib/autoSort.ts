@@ -6,6 +6,7 @@ import { computeImageHash, findDuplicateGroups, hammingDistance } from './duplic
 import { groupIntoBursts } from './bursts';
 import { detectDocumentLike } from './documentDetection';
 import { classifyScene } from './sceneClassification';
+import { summarizeScene } from './sceneCategories';
 import { scorePhotoQuality } from './photoScore';
 import { mapWithConcurrency, pickConcurrency } from './concurrency';
 import { classifyPhoto, type ClassifySignals, type DuplicateContext, type Sensitivity } from './classifyPhoto';
@@ -90,7 +91,7 @@ export async function runAutoSort(
         detectLowQuality(photo.blob).catch((): QualityResult => ({ isLowQuality: false })),
         computeImageHash(photo.blob).catch(() => null),
         detectDocumentLike(photo.blob).catch(() => false),
-        classifyScene(photo.blob).catch(() => ({ isUtilityPhoto: false, label: null, confidence: 0 })),
+        classifyScene(photo.blob).catch(() => summarizeScene([], null)),
       ]);
       check = {
         photo,
@@ -103,6 +104,7 @@ export async function runAutoSort(
         isUtilityPhoto: scene.isUtilityPhoto,
         utilityLabel: scene.label,
         utilityConfidence: scene.confidence,
+        hasPerson: scene.hasPerson,
         eyesClosed: face.eyesClosed,
         facingAway: face.facingAway,
         faceCount: face.faceCount,

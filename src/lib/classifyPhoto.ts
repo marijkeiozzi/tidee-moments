@@ -23,6 +23,9 @@ export interface ClassifySignals {
   isUtilityPhoto: boolean;
   utilityLabel: string | null;
   utilityConfidence: number;
+  // Someone is in frame per the object detector — sees bodies, sleeping babies and the backs of
+  // heads that face detection misses. Optional so older callers/fixtures default to "no".
+  hasPerson?: boolean;
   eyesClosed: boolean;
   facingAway: boolean;
   faceCount: number;
@@ -77,22 +80,22 @@ interface Thresholds {
   // what decides, per sensitivity level, how much of that counts as "the same shot" worth
   // deleting down to one copy.
   duplicateHammingCeiling: number;
-  // sceneClassification.ts's own isUtilityPhoto flag trips at 35% confidence — tuned for a much
-  // lower-stakes use (excluding a photo from winning a duplicate group). Require real confidence
-  // before a scene label alone becomes a deletion trigger.
+  // sceneCategories.ts only flags isUtilityPhoto once it's ruled out people, pets and food; this
+  // is how much of MobileNet's top-5 weight must also sit on household objects before that
+  // flag alone sets a photo aside. Every real object photo in the tuning set scored 0.6+.
   utilityDeleteConfidence: number;
 }
 
 const THRESHOLDS: Record<Sensitivity, Thresholds> = {
   // "Just the best" — most aggressive declutter: a fairly loose bar for "beyond recognition"
   // blur, and treats a burst photo as redundant even with real pose/arm movement between frames.
-  strict: { severeBlurSharpness: 45, blankSharpness: 6, meaningfulDuplicateGap: 50, duplicateHammingCeiling: 32, utilityDeleteConfidence: 0.6 },
+  strict: { severeBlurSharpness: 45, blankSharpness: 6, meaningfulDuplicateGap: 50, duplicateHammingCeiling: 32, utilityDeleteConfidence: 0.5 },
   // Middle ground — still catches obvious duplicates and unusable shots, less eager on borderline
   // ones.
-  balanced: { severeBlurSharpness: 32, blankSharpness: 6, meaningfulDuplicateGap: 65, duplicateHammingCeiling: 20, utilityDeleteConfidence: 0.65 },
+  balanced: { severeBlurSharpness: 32, blankSharpness: 6, meaningfulDuplicateGap: 65, duplicateHammingCeiling: 20, utilityDeleteConfidence: 0.6 },
   // "Generous" — when in doubt, keep it. Only near-pixel-identical duplicates and truly
   // unusable frames get removed; anything with real in-frame variation stays.
-  generous: { severeBlurSharpness: 22, blankSharpness: 6, meaningfulDuplicateGap: 90, duplicateHammingCeiling: 8, utilityDeleteConfidence: 0.7 },
+  generous: { severeBlurSharpness: 22, blankSharpness: 6, meaningfulDuplicateGap: 90, duplicateHammingCeiling: 8, utilityDeleteConfidence: 0.85 },
 };
 
 function clamp01(n: number): number {
@@ -193,17 +196,17 @@ export function classifyPhoto(s: ClassifySignals, dup?: DuplicateContext, sensit
     };
   }
 
-  // 5. Screenshot/document with nobody in it, or a confidently-identified reference/utility
-  // photo (laptop, window, printer, etc.) with nobody in it. A low-confidence scene guess isn't
-  // strong enough evidence on its own — that's handled as a soft "uncertain" signal below.
+  // 5. Screenshot/document, or a photo of a thing (a pot, an appliance, a lamp) — only ever with
+  // nobody in it: no face AND no person from the object detector. A weak object read isn't
+  // strong enough on its own — that's handled as a soft "uncertain" signal below.
   const confidentUtility = s.isUtilityPhoto && s.utilityConfidence >= UTILITY_DELETE_CONFIDENCE;
-  if (s.faceCount === 0 && (s.isDocument || confidentUtility)) {
+  if (s.faceCount === 0 && !s.hasPerson && (s.isDocument || confidentUtility)) {
     const evidence = s.isDocument
-      ? 'Flat, mostly-uniform background with dense text/print-like detail — matches a document or screenshot, not a photo, and no faces were found in it.'
-      : `Classified as "${s.utilityLabel}" (${Math.round(s.utilityConfidence * 100)}% confidence) — a reference/utility shot, and no faces were found in it.`;
+      ? 'Flat, mostly-uniform background with dense text/print-like detail — matches a document or screenshot, not a photo, and nobody is in it.'
+      : `Looks like a photo of a ${s.utilityLabel ?? 'household object'} (${Math.round(s.utilityConfidence * 100)}% confidence) with no person, pet or food in it.`;
     return {
       verdict: 'delete',
-      reason: s.isDocument ? 'Looks like a screenshot or document' : 'Looks like a reference photo, not a memory',
+      reason: s.isDocument ? 'Looks like a screenshot or document' : 'Looks like a photo of a thing, not a moment',
       evidence,
       scores: { ...base, confidence: 0.8 },
     };

@@ -9,6 +9,8 @@ export interface PhotoQualitySignals {
   openEyesFraction: number;
   smileScore: number;
   maxFaceArea: number;
+  // A person the object detector sees even when no face is found (asleep, turned away).
+  hasPerson?: boolean;
 }
 
 // Raw sharpness (edge/texture density) is a poor stand-in for "best photo" — a background of
@@ -19,7 +21,7 @@ export interface PhotoQualitySignals {
 // group photo where one of five people blinked doesn't get the same penalty as a solo portrait
 // with closed eyes.
 export function scorePhotoQuality(s: PhotoQualitySignals): number {
-  let score = s.faceCount > 0 ? 1000 : 0;
+  let score = s.faceCount > 0 ? 1000 : s.hasPerson ? 600 : 0;
   if (s.facingAway) score -= 400;
   score += s.openEyesFraction * 300;
   score += s.smileScore * 250;

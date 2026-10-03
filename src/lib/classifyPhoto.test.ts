@@ -91,6 +91,21 @@ const cases: Case[] = [
     expect: 'delete',
   },
   {
+    name: 'photo of a pot (cookware, no person/pet/food) at high confidence',
+    signals: { ...BASE, sharpness: 200, isUtilityPhoto: true, utilityLabel: 'Dutch oven', utilityConfidence: 0.97, faceCount: 0 },
+    expect: 'delete',
+  },
+  {
+    name: 'object-looking photo but the detector sees a person (e.g. sleeping baby, no face found)',
+    signals: { ...BASE, sharpness: 200, isUtilityPhoto: true, utilityLabel: 'crib', utilityConfidence: 0.9, faceCount: 0, hasPerson: true },
+    expect: 'review',
+  },
+  {
+    name: 'document-like photo with a person in it (kid holding a drawing)',
+    signals: { ...BASE, sharpness: 200, isDocument: true, faceCount: 0, hasPerson: true },
+    expect: 'review',
+  },
+  {
     name: 'burst: different moment entirely, well beyond the loosened ceiling (distance 45, not a real duplicate)',
     signals: { ...BASE, sharpness: 180, faceCount: 1, openEyesFraction: 1 },
     dup: { hammingDistance: 45, qualityGap: 300, comparePhotoId: 'winner' },

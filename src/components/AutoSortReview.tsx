@@ -46,7 +46,7 @@ function badgeLabel(reason: string | undefined, similar: boolean): string {
   if (r.includes('blurry')) return 'Blurry';
   if (r.includes('blank')) return 'Blank';
   if (r.includes('screenshot') || r.includes('document')) return 'Screenshot';
-  if (r.includes('reference photo')) return 'Reference';
+  if (r.includes('photo of a thing')) return 'Object';
   if (r.includes('moved to delete')) return 'Set aside';
   return similar ? 'Similar' : 'Set aside';
 }
