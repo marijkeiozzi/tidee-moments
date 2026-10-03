@@ -1,3 +1,5 @@
+import HeroShowcase from './HeroShowcase';
+
 interface LandingPageProps {
   onGetStarted: () => void;
 }
@@ -82,7 +84,11 @@ const FAQS = [
   },
   {
     q: 'What happens to the originals when I set a photo aside?',
-    a: 'Nothing. Tidee Moments works on its own copy of your photos, stored in your browser. Setting a photo aside only affects that copy — your camera roll and original files are never touched.',
+    a: 'Nothing. Tidee Moments works on its own copy of your photos, stored in your browser. Setting a photo aside only affects that copy — your camera roll and original files are never touched — and it waits in Recently Deleted for 30 days in case you change your mind.',
+  },
+  {
+    q: 'What if my browser clears its data?',
+    a: "Your albums are stored only in your browser, so download a backup from the Albums tab now and then — the app reminds you. A backup is a normal .zip file you can keep anywhere and restore on any device. On iPhone, adding Tidee Moments to your Home Screen also helps Safari keep your photos.",
   },
   {
     q: 'Does it work on my phone?',
@@ -93,16 +99,6 @@ const FAQS = [
     a: 'Screenshots are detected automatically and kept in a separate pile from your memories, so they never clutter up your albums. You can still look through that pile and keep anything you want.',
   },
 ];
-
-// Warm gradient "photos" for the hero collage — abstract, no real photo assets needed, tuned to
-// evoke beach/golden-hour/cozy-indoor family moments in the same warm palette as the page itself.
-function PolaroidPhoto({ gradient, className }: { gradient: string; className?: string }) {
-  return (
-    <div className={`absolute bg-white p-2 pb-8 rounded-sm shadow-xl ${className ?? ''}`}>
-      <div className="w-full h-full rounded-[2px]" style={{ background: gradient }} />
-    </div>
-  );
-}
 
 export default function LandingPage({ onGetStarted }: LandingPageProps) {
   return (
@@ -128,7 +124,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </button>
         </header>
 
-        <section className="grid lg:grid-cols-2 gap-12 items-center py-16 sm:py-24">
+        <section className="grid md:grid-cols-2 gap-8 md:gap-12 items-center py-12 sm:py-20 overflow-x-clip">
           <div>
             <p className="text-[#BB5133] text-xs font-semibold tracking-[0.2em] uppercase mb-5">
               For parents with full camera rolls
@@ -152,20 +148,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             </button>
           </div>
 
-          <div className="relative h-[420px] hidden lg:block">
-            <PolaroidPhoto
-              gradient="linear-gradient(135deg, #F4D9A8 0%, #E8B77C 45%, #D99A6C 100%)"
-              className="w-56 h-72 left-4 top-0 -rotate-6"
-            />
-            <PolaroidPhoto
-              gradient="linear-gradient(135deg, #E7CCB8 0%, #C99A7C 55%, #8A6350 100%)"
-              className="w-56 h-72 right-0 top-6 rotate-6"
-            />
-            <PolaroidPhoto
-              gradient="linear-gradient(160deg, #EFE3C9 0%, #D9C79A 40%, #A8C08A 75%, #7FA06B 100%)"
-              className="w-64 h-80 left-24 top-32 -rotate-3"
-            />
-          </div>
+          <HeroShowcase />
         </section>
       </div>
 
