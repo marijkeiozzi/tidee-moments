@@ -5,21 +5,21 @@ interface LandingPageProps {
 const STEPS = [
   {
     n: '1',
-    emoji: '📤',
-    title: 'Upload',
-    body: 'Drop in photos from your camera roll, phone, or computer.',
+    emoji: '📥',
+    title: 'Bring in the whole roll',
+    body: 'Drop in hundreds or thousands of photos at once. Screenshots and receipts are set aside on their own, so only real memories get sorted.',
   },
   {
     n: '2',
-    emoji: '🔄',
-    title: 'Swipe to tidee up',
-    body: 'Fly through one photo at a time — swipe right to keep, left to delete, up to save to an album. Free on-device checks flag blurry shots and duplicates as you go.',
+    emoji: '✨',
+    title: 'It sorts itself',
+    body: 'Photos are grouped into moments and the best shot of each is kept. Blurry, blank, and near-duplicate shots are set aside — all on your device, nothing uploaded.',
   },
   {
     n: '3',
-    emoji: '📁',
-    title: 'Share',
-    body: 'Group the best shots into albums, then export or share them with grandparents and the rest of the family.',
+    emoji: '💌',
+    title: 'Check, then share',
+    body: "Tap any photo to keep it or set it aside, then save the keepers as an album. Share it as a single page or a zip with grandparents and the rest of the family.",
   },
 ];
 
