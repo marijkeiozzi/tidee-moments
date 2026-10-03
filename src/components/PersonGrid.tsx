@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Album, Person, Photo } from '../db/indexedDb';
 import { assignPhotoToAlbum, createAlbum, getAllAlbums, getPhotosByIds, renamePerson } from '../db/indexedDb';
 import { buildShareablePage } from '../lib/sharePage';
+import PhotoThumbImage from './PhotoThumbImage';
 
 interface PersonGridProps {
   person: Person;
@@ -10,7 +11,6 @@ interface PersonGridProps {
 
 export default function PersonGrid({ person, onBack }: PersonGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [urls, setUrls] = useState<Record<string, string>>({});
   const [name, setName] = useState(person.name);
   const [buildingPage, setBuildingPage] = useState(false);
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -30,17 +30,6 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
       setSelectedAlbumId((prev) => prev || list[0]?.id || '');
     });
   }, []);
-
-  useEffect(() => {
-    const next: Record<string, string> = {};
-    photos.forEach((p) => {
-      next[p.id] = URL.createObjectURL(p.blob);
-    });
-    setUrls(next);
-    return () => {
-      Object.values(next).forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [photos]);
 
   async function handleNameBlur() {
     if (name.trim() && name !== person.name) {
@@ -182,12 +171,9 @@ export default function PersonGrid({ person, onBack }: PersonGridProps) {
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
           {photos.map((p) => (
-            <img
-              key={p.id}
-              src={urls[p.id]}
-              alt=""
-              className="w-full aspect-square object-cover rounded-xl shadow-sm"
-            />
+            <div key={p.id} className="w-full aspect-square rounded-xl overflow-hidden shadow-sm bg-[#EFE9DD]">
+              <PhotoThumbImage photo={p} />
+            </div>
           ))}
         </div>
       )}

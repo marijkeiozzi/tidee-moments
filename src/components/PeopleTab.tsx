@@ -3,6 +3,7 @@ import type { Person, Photo } from '../db/indexedDb';
 import { getAllPeople, getPhotosByIds, getPhotosByStatus, renamePerson, replaceAllPeople } from '../db/indexedDb';
 import * as faceapi from 'face-api.js';
 import { loadFaceModels, getFaceDescriptors, clusterFaces } from '../lib/faces';
+import PhotoThumbImage from './PhotoThumbImage';
 
 interface PeopleTabProps {
   onOpenPerson: (person: Person) => void;
@@ -45,7 +46,7 @@ function writeSignature(sig: string) {
 
 export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
   const [people, setPeople] = useState<Person[]>([]);
-  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  const [coverPhotos, setCoverPhotos] = useState<Record<string, Photo>>({});
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,27 +79,19 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const urls: Record<string, string> = {};
+      const covers: Record<string, Photo> = {};
       for (const person of people) {
         const [firstId] = person.photoIds;
         if (!firstId) continue;
         const [photo] = await getPhotosByIds([firstId]);
-        if (photo && !cancelled) urls[person.id] = URL.createObjectURL(photo.blob);
+        if (photo) covers[person.id] = photo;
       }
-      if (!cancelled) setThumbUrls(urls);
-      else Object.values(urls).forEach((u) => URL.revokeObjectURL(u));
+      if (!cancelled) setCoverPhotos(covers);
     })();
     return () => {
       cancelled = true;
     };
   }, [people]);
-
-  useEffect(() => {
-    return () => {
-      Object.values(thumbUrls).forEach((u) => URL.revokeObjectURL(u));
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thumbUrls]);
 
   async function handleScan() {
     setScanning(true);
@@ -216,9 +209,7 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
               className="bg-white border border-black/5 rounded-2xl overflow-hidden text-left hover:border-[#BB5133]/30 hover:shadow-md transition-all"
             >
               <button onClick={() => onOpenPerson(person)} className="block w-full aspect-square bg-[#EFE9DD]">
-                {thumbUrls[person.id] && (
-                  <img src={thumbUrls[person.id]} alt="" className="w-full h-full object-cover" />
-                )}
+                {coverPhotos[person.id] && <PhotoThumbImage photo={coverPhotos[person.id]} />}
               </button>
               <div className="p-2">
                 <input

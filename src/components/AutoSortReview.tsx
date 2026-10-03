@@ -3,7 +3,7 @@ import type { Photo } from '../db/indexedDb';
 import { suggestAlbumName } from '../lib/sessions';
 import { suggestMilestoneAlbumName } from '../lib/milestones';
 import type { DeleteCandidate, Moment, Sensitivity } from '../lib/autoSort';
-import { usePhotoUrl } from '../hooks/usePhotoUrl';
+import PhotoThumbImage from './PhotoThumbImage';
 
 export type ConfirmAlbumChoice = { type: 'single'; name: string };
 
@@ -66,15 +66,12 @@ function MomentThumb({
   flags: string[];
   onToggle: () => void;
 }) {
-  const url = usePhotoUrl(photo);
   return (
     <button
       onClick={onToggle}
       className={`relative aspect-square w-full rounded-xl overflow-hidden bg-[#EFE9DD] ${kept ? 'ring-2 ring-[#BB5133]' : ''}`}
     >
-      {url ? (
-        <img src={url} alt="" className={`w-full h-full object-cover transition-all ${kept ? '' : 'grayscale opacity-70'}`} />
-      ) : null}
+      <PhotoThumbImage photo={photo} className={`transition-all ${kept ? '' : 'grayscale opacity-70'}`} />
       {!kept && (
         <span className="absolute top-2 left-2 bg-black/55 text-white text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full">
           {badgeLabel(reason, similar)}

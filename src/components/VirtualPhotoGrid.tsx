@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Photo } from '../db/indexedDb';
-import { getDisplayableBlob } from '../hooks/usePhotoUrl';
+import PhotoThumbImage from './PhotoThumbImage';
 
 const monthLabelFormat = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
 const dayLabelFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
@@ -48,29 +48,11 @@ function PhotoThumb({
   onNoteChange?: (id: string, note: string) => void;
   caption?: { reason: string; evidence: string };
 }) {
-  const [url, setUrl] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState(photo.note);
 
   useEffect(() => {
     setNoteDraft(photo.note);
   }, [photo.id, photo.note]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    getDisplayableBlob(photo).then((blob) => {
-      if (cancelled) return;
-      objectUrl = URL.createObjectURL(blob);
-      setUrl(objectUrl);
-    });
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-    // Keyed on id+blob (not the whole photo object) so an unrelated re-render that hands this
-    // cell a new-but-equivalent photo object doesn't tear down and recreate the object URL.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photo.id, photo.blob]);
 
   return (
     <div className="flex flex-col gap-1">
@@ -79,13 +61,7 @@ function PhotoThumb({
         title={moveIcon ? 'Tap to move to the other pile' : undefined}
         className={`relative aspect-square w-full rounded-xl overflow-hidden shadow-sm bg-stone-100 ${selected ? 'ring-4 ring-rose-400' : ''}`}
       >
-        {url ? (
-          <img src={url} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-6 h-6 rounded-full border-2 border-stone-300 border-t-rose-400 animate-spin" />
-          </div>
-        )}
+        <PhotoThumbImage photo={photo} />
         {selected && (
           <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-rose-400 text-white text-xs flex items-center justify-center shadow">
             ✓
