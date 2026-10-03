@@ -14,7 +14,6 @@ import {
   createAlbum,
   deleteAlbum,
   getAllAlbums,
-  getKeptPhotosWithoutAlbum,
   getPhotosByAlbum,
   getPhotosByStatus,
   setPhotoNote,
@@ -130,7 +129,7 @@ export default function App() {
   }, [activeAlbumId]);
 
   const refreshKeptWithoutAlbumCount = useCallback(async () => {
-    const kept = await getKeptPhotosWithoutAlbum();
+    const kept = await getPhotosByStatus('kept');
     setKeptWithoutAlbumCount(kept.length);
   }, []);
 
@@ -338,7 +337,7 @@ export default function App() {
     await refreshKeptWithoutAlbumCount();
     setAlbumToast(
       movedCount > 0
-        ? `Deleted "${album.name}" — ${movedCount} photo${movedCount === 1 ? '' : 's'} moved to All Kept Photos 📦`
+        ? `Deleted "${album.name}" — ${movedCount} photo${movedCount === 1 ? '' : 's'} still in your Timeline 📦`
         : `Deleted "${album.name}"`,
     );
     setTimeout(() => setAlbumToast(null), 3000);
@@ -359,7 +358,7 @@ export default function App() {
             refreshAlbums();
             refreshKeptWithoutAlbumCount();
           }}
-          emptyMessage="No photos in this album yet 🌱 Swipe up on a photo to add it here."
+          emptyMessage="No photos in this album yet 🌱 Select photos in your Timeline and move them here."
         />
       </div>
     );
@@ -369,14 +368,15 @@ export default function App() {
     return (
       <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
         <AlbumGrid
-          title="All Kept Photos"
-          fetchPhotos={getKeptPhotosWithoutAlbum}
+          title="Timeline"
+          fetchPhotos={() => getPhotosByStatus('kept')}
+          keepAfterMove
           onBack={() => {
             setShowAllKept(false);
             refreshAlbums();
             refreshKeptWithoutAlbumCount();
           }}
-          emptyMessage="No kept photos outside an album right now 🌱 Photos you keep without choosing an album show up here."
+          emptyMessage="No kept photos yet 🌱 Everything you keep shows up here, month by month."
         />
       </div>
     );
@@ -494,7 +494,7 @@ export default function App() {
                   </div>
                   <p className="text-xs text-[#A69C8E] max-w-sm text-center">
                     Blurry, closed-eyes, poor-quality, and duplicate shots get flagged automatically — all
-                    on-device, no AI, no cost. You'll review both piles before anything is final.
+                    on your device, nothing uploaded. You'll review both piles before anything is final.
                   </p>
                 </div>
               ) : null}
@@ -662,12 +662,12 @@ export default function App() {
                 onClick={() => setShowAllKept(true)}
                 className="text-sm bg-white border border-black/10 text-[#231F1B] font-medium px-5 py-2.5 rounded-full hover:bg-[#F6F1E7] transition-colors"
               >
-                All Kept Photos ({keptWithoutAlbumCount})
+                Timeline · {keptWithoutAlbumCount} kept photos
               </button>
             )}
           </div>
           {albums.length === 0 ? (
-            <p className="text-[#A69C8E]">No albums yet 🌱 Create one, or swipe up on a photo while tidying up.</p>
+            <p className="text-[#A69C8E]">No albums yet 🌱 Sort some photos and save the keepers as an album, or create an empty one here.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {albums.map((a) => (

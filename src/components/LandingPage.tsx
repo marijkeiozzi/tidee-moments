@@ -7,19 +7,19 @@ const STEPS = [
     n: '1',
     emoji: '📥',
     title: 'Bring in the whole roll',
-    body: 'Drop in hundreds or thousands of photos at once. Screenshots and receipts are set aside on their own, so only real memories get sorted.',
+    body: 'Drop in hundreds or thousands of photos at once. Screenshots and receipts go into their own pile, so only real memories get sorted.',
   },
   {
     n: '2',
     emoji: '✨',
     title: 'It sorts itself',
-    body: 'Photos are grouped into moments and the best shot of each is kept. Blurry, blank, and near-duplicate shots are set aside — all on your device, nothing uploaded.',
+    body: 'Photos are grouped into moments. Near-identical shots are cut down to the best one, and blank or badly blurred shots are set aside — all on your device, nothing uploaded.',
   },
   {
     n: '3',
     emoji: '💌',
     title: 'Check, then share',
-    body: "Tap any photo to keep it or set it aside, then save the keepers as an album. Share it as a single page or a zip with grandparents and the rest of the family.",
+    body: 'Tap any photo to keep it or set it aside, then save the keepers as an album. Share it as a single page or a zip with grandparents and the rest of the family.',
   },
 ];
 
@@ -27,47 +27,47 @@ const FEATURES = [
   {
     emoji: '👀',
     title: 'Face-aware sorting',
-    body: "Picks the best shot out of every burst by who's actually in it — eyes open, facing the camera, genuinely smiling — not just whichever frame is technically sharpest.",
+    body: "When you've taken several shots of the same moment, it keeps the one where faces are turned to the camera, eyes are open and smiles are biggest — not just whichever frame is sharpest.",
   },
   {
     emoji: '🎯',
     title: 'Burst & duplicate cleanup',
-    body: 'Ten near-identical shots from the same moment get quietly reduced to the one worth keeping, automatically.',
+    body: 'A run of near-identical shots of the same moment — even ten in a row — is cut down to the single best one, automatically.',
   },
   {
     emoji: '🌀',
     title: 'Blur & closed-eyes detection',
-    body: 'Flags out-of-focus, poorly-exposed, and blinking shots for you to skip — so you never build an album around a bad photo by accident.',
+    body: 'Blank and badly blurred shots are set aside. Kept photos with closed eyes, soft focus or poor light get a "worth a look" badge, so a bad photo never slips into an album unnoticed.',
   },
   {
     emoji: '🤳',
     title: 'Screenshot & document filtering',
-    body: 'Recipe screenshots, receipts, and app grabs get set aside separately, so they never clutter up your actual memories.',
+    body: 'Screenshots, receipts and app grabs are set aside in their own pile, so they never clutter up your actual memories.',
   },
   {
     emoji: '👨‍👩‍👧',
     title: 'People, auto-grouped',
-    body: "Kept photos get clustered by who's in them, so \"every photo of Grandma\" or \"all of Emma this year\" is one tap away.",
+    body: 'Kept photos are grouped by the faces in them, automatically. Name someone once, and every photo of Grandma is one tap away.',
   },
   {
     emoji: '📅',
     title: 'Organized by month',
-    body: 'Your camera roll sorts itself into a real timeline — no manual date-wrangling required.',
+    body: 'Every photo you keep lands on a month-by-month timeline, using the date it was taken — no manual date-wrangling required.',
   },
   {
     emoji: '✏️',
     title: 'Captions that stick',
-    body: 'Add a note to any photo once, and it carries straight through into every album, export, and shared page.',
+    body: 'Add a caption to any photo once. It shows under the photo on your shared page and becomes its file name in the zip export.',
   },
   {
     emoji: '📁',
     title: 'Smart album names',
-    body: 'Big days and recurring dates get a suggested album name pulled straight from the photos themselves.',
+    body: "A day full of photos gets suggested as a big day, and a date that matches an earlier year's event album — a birthday, say — reuses that album's name.",
   },
   {
     emoji: '📤',
     title: 'Share your way',
-    body: 'Export a zip of the originals, or generate one shareable page grandparents can open and save photos from — no app, no account.',
+    body: 'Export a zip of the full-size photos, or make one shareable page grandparents can open and save photos from — no app, no account.',
   },
 ];
 
@@ -78,19 +78,19 @@ const FAQS = [
   },
   {
     q: 'Do my photos get uploaded anywhere?',
-    a: 'No, never. Every check — blur, faces, duplicates, everything — runs entirely on your own device. No photo ever leaves your browser.',
+    a: 'No, never. Every check — blur, faces, duplicates, everything — runs on your own device, inside your browser. No photo is ever sent to a server.',
   },
   {
-    q: 'What happens to the originals when I hit delete?',
-    a: "Nothing — \"Delete\" only removes the photo from Tidee Moments' own copy. It never touches your camera roll or the original file on your device.",
+    q: 'What happens to the originals when I set a photo aside?',
+    a: 'Nothing. Tidee Moments works on its own copy of your photos, stored in your browser. Setting a photo aside only affects that copy — your camera roll and original files are never touched.',
   },
   {
     q: 'Does it work on my phone?',
-    a: "Yes, it's a website that works in any modern mobile or desktop browser — nothing to install.",
+    a: "Yes, it's a website that runs in any up-to-date phone or computer browser — nothing to install. Very large batches sort faster on a computer.",
   },
   {
     q: "What if it's screenshots, not photos?",
-    a: 'Screenshots are detected automatically and kept in a separate pile from your actual memories, so they never clutter up your photo bundles.',
+    a: 'Screenshots are detected automatically and kept in a separate pile from your memories, so they never clutter up your albums. You can still look through that pile and keep anything you want.',
   },
 ];
 
@@ -141,8 +141,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <span className="italic text-[#BB5133]">Only the keepers.</span>
             </h1>
             <p className="text-[#5B5349] text-lg leading-relaxed max-w-md mb-8">
-              Drop in the whole camera roll. We'll set aside the blurry shots and duplicates, and pick the best of
-              every moment and every day, so your albums come together in minutes.
+              Drop in the whole camera roll. We'll set aside the blurry shots and duplicates and keep the best of
+              every run of near-identical photos, so your albums come together in minutes, not evenings.
             </p>
             <button
               onClick={onGetStarted}
@@ -191,7 +191,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         <section className="mb-14">
           <h2 className="text-center font-serif text-2xl mb-1">Everything runs on your device</h2>
           <p className="text-center text-sm text-[#8A8177] mb-8">
-            No AI, no uploads, no subscription — just free, local checks doing the tedious part for you.
+            No uploads, no account, no subscription — the checks run on small models right in your browser, so your photos never leave your device.
           </p>
           <div className="grid sm:grid-cols-3 gap-4">
             {FEATURES.map((f) => (

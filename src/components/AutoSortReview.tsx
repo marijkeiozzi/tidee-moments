@@ -26,7 +26,7 @@ const SENSITIVITY_OPTIONS: { value: Sensitivity; label: string }[] = [
   { value: 'generous', label: 'Generous' },
 ];
 
-type Filter = 'all' | 'kept' | 'setAside';
+type Filter = 'all' | 'kept' | 'flagged' | 'setAside';
 
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -56,12 +56,14 @@ function MomentThumb({
   kept,
   similar,
   reason,
+  flags,
   onToggle,
 }: {
   photo: Photo;
   kept: boolean;
   similar: boolean;
   reason?: string;
+  flags: string[];
   onToggle: () => void;
 }) {
   const url = usePhotoUrl(photo);
@@ -76,6 +78,15 @@ function MomentThumb({
       {!kept && (
         <span className="absolute top-2 left-2 bg-black/55 text-white text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full">
           {badgeLabel(reason, similar)}
+        </span>
+      )}
+      {kept && flags.length > 0 && (
+        <span
+          title={flags.join(' · ')}
+          className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate bg-amber-100/95 text-amber-900 text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full"
+        >
+          {flags[0]}
+          {flags.length > 1 ? ` +${flags.length - 1}` : ''}
         </span>
       )}
       {kept && (
@@ -103,7 +114,7 @@ export default function AutoSortReview({
 }: AutoSortReviewProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const [showAlbumModal, setShowAlbumModal] = useState(false);
-  const [albumName, setAlbumName] = useState(() => `Our moments · ${suggestAlbumName(keepPhotos)}`);
+  const [albumName, setAlbumName] = useState(() => suggestAlbumName(keepPhotos));
   const nameEditedRef = useRef(false);
 
   useEffect(() => {
@@ -118,6 +129,10 @@ export default function AutoSortReview({
 
   const blurryCount = useMemo(() => deletePhotos.filter((d) => d.reason.includes('blurry') || d.reason.includes('blank')).length, [deletePhotos]);
   const duplicateCount = useMemo(() => deletePhotos.filter((d) => d.reason.includes('duplicate')).length, [deletePhotos]);
+  const flaggedCount = useMemo(
+    () => moments.reduce((n, m) => n + m.photos.filter((p) => p.flags.length > 0 && keptIds.has(p.photo.id)).length, 0),
+    [moments, keptIds],
+  );
   const dayCount = useMemo(() => new Set(moments.map((m) => dayKey(m.timestamp))).size, [moments]);
 
   const dayGroups = useMemo(() => {
@@ -162,11 +177,20 @@ export default function AutoSortReview({
         <span>
           <span className="font-semibold">{duplicateCount}</span> <span className="text-[#8A8177]">{duplicateCount === 1 ? 'duplicate or near-duplicate' : 'duplicates & near-duplicates'}</span>
         </span>
+        {flaggedCount > 0 && (
+          <span>
+            <span className="font-semibold">{flaggedCount}</span>{' '}
+            <span className="text-[#8A8177]">kept but worth a look</span>
+          </span>
+        )}
         <span>
           <span className="font-semibold">{dayCount}</span> <span className="text-[#8A8177]">{dayCount === 1 ? 'day' : 'days'}</span>
         </span>
       </div>
-      <p className="text-[#8A8177] text-sm mt-3">Tap any photo to keep it or set it aside.</p>
+      <p className="text-[#8A8177] text-sm mt-3">
+        Tap any photo to keep it or set it aside. Amber badges mark kept photos with closed eyes, soft focus or
+        poor light — worth a second look.
+      </p>
 
       <div className="flex flex-wrap items-center gap-3 mt-6">
         <div className="inline-flex items-center bg-[#EFE9DD] rounded-full p-1 text-sm">
@@ -188,6 +212,7 @@ export default function AutoSortReview({
             [
               ['all', 'All'],
               ['kept', 'Kept'],
+              ['flagged', 'Worth a look'],
               ['setAside', 'Set aside'],
             ] as const
           ).map(([value, label]) => (
@@ -210,7 +235,7 @@ export default function AutoSortReview({
           Create album · {keepPhotos.length}
         </button>
       </div>
-      <p className="text-[#A69C8E] text-xs mt-2">One photo per moment{resorting ? ' — re-sorting…' : ''}</p>
+      <p className="text-[#A69C8E] text-xs mt-2">Grouped by moment{resorting ? ' — re-sorting…' : ''}</p>
 
       <div className="mt-8 flex flex-col gap-10">
         {dayGroups.map((day) => {
@@ -229,6 +254,7 @@ export default function AutoSortReview({
                   const visiblePhotos = moment.photos.filter((p) => {
                     const kept = keptIds.has(p.photo.id);
                     if (filter === 'kept') return kept;
+                    if (filter === 'flagged') return kept && p.flags.length > 0;
                     if (filter === 'setAside') return !kept;
                     return true;
                   });
@@ -246,6 +272,7 @@ export default function AutoSortReview({
                             kept={keptIds.has(p.photo.id)}
                             similar={p.similar}
                             reason={p.reason}
+                            flags={p.flags}
                             onToggle={() => onMove(p.photo.id, keptIds.has(p.photo.id) ? 'delete' : 'keep')}
                           />
                         ))}

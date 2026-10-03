@@ -36,14 +36,14 @@ async function getDimensionKey(file: File): Promise<string | null> {
   }
 }
 
-// Screenshots and downloaded/saved images (a product listing, a decor mockup, an app capture)
-// are almost always PNG or JPEG with no camera EXIF; real camera/phone photos are almost always
-// JPEG/HEIC WITH that metadata (Make/Model gets written by the camera hardware itself, not
-// something a screenshot or a saved web image would ever carry). This catches screenshots of
-// colorful content — a video game HUD, a product photo — that the pixel-based document detector
-// below can't, since that detector only recognizes flat, mostly-monochrome UI (a receipt, a text
-// thread), not an arbitrary screen capture. HEIC is excluded: it's near-universally genuine
-// camera output, never something you'd screenshot or download in that format.
+// Phone screenshots are saved as PNG, and a PNG with no camera EXIF (Make/Model gets written
+// by the camera hardware itself) is almost never a real photo — that catches colorful screen
+// captures (a game HUD, a product listing) the pixel-based document detector below can't.
+// A JPEG with no camera EXIF is NOT enough on its own, though: WhatsApp, Messenger, Facebook
+// and most "save image" flows strip EXIF from genuine family photos, and treating all of those
+// as screenshots hid real memories in the screenshot pile. A metadata-less JPEG only counts
+// when it also matches a phone screen's exact resolution or reads as a document.
+// HEIC is excluded: it's near-universally genuine camera output.
 export async function getFileMeta(file: File): Promise<FileMeta> {
   let capturedAt = file.lastModified || Date.now();
   let hasCameraExif = false;
@@ -60,7 +60,7 @@ export async function getFileMeta(file: File): Promise<FileMeta> {
   }
 
   const nameMatches = SCREENSHOT_NAME_PATTERN.test(file.name);
-  const formatMatches = (file.type === 'image/png' || file.type === 'image/jpeg') && !hasCameraExif;
+  const formatMatches = file.type === 'image/png' && !hasCameraExif;
   const dimensionKey = nameMatches || formatMatches ? null : await getDimensionKey(file);
   const dimensionMatches = dimensionKey !== null && KNOWN_SCREEN_RESOLUTIONS.has(dimensionKey);
 

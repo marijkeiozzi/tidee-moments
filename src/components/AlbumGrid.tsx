@@ -11,9 +11,12 @@ interface AlbumGridProps {
   fetchPhotos: () => Promise<Photo[]>;
   onBack: () => void;
   emptyMessage?: string;
+  // The timeline shows every kept photo whether or not it's in an album, so filing one into an
+  // album shouldn't make it vanish from view there.
+  keepAfterMove?: boolean;
 }
 
-export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: AlbumGridProps) {
+export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, keepAfterMove = false }: AlbumGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [exporting, setExporting] = useState(false);
   const [buildingPage, setBuildingPage] = useState(false);
@@ -27,7 +30,8 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
   const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchPhotos().then(setPhotos);
+    // Oldest first, so each month reads as a timeline and the zip/page come out in date order.
+    fetchPhotos().then((list) => setPhotos([...list].sort((a, b) => a.capturedAt - b.capturedAt)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,12 +72,19 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
       const albumName = albums.find((a) => a.id === targetAlbumId)?.name ?? 'the album';
       setToast(`Moved ${ids.length} photo${ids.length === 1 ? '' : 's'} to "${albumName}" 📁`);
       setTimeout(() => setToast(null), 2500);
-      setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+      if (!keepAfterMove) setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
       setSelectedIds(new Set());
     } finally {
       setMoving(false);
     }
   }
+
+  // Keep the in-memory copy in step with what's saved, or a caption typed here wouldn't make it
+  // into this album's zip or shared page until the page was reloaded.
+  const handleNoteChange = useCallback(async (id: string, note: string) => {
+    await setPhotoNote(id, note);
+    setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, note } : p)));
+  }, []);
 
   async function handleExport() {
     setExporting(true);
@@ -264,7 +275,7 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage }: 
       {photos.length === 0 ? (
         <p className="text-[#A69C8E]">{emptyMessage ?? 'No photos here yet 🌱'}</p>
       ) : (
-        <VirtualPhotoGrid photos={photos} isSelected={isSelected} onToggle={toggleSelected} onNoteChange={setPhotoNote} />
+        <VirtualPhotoGrid photos={photos} isSelected={isSelected} onToggle={toggleSelected} onNoteChange={handleNoteChange} />
       )}
 
       {toast && (

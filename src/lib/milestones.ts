@@ -6,34 +6,44 @@ import { suggestAlbumName } from './sessions';
 // understanding needed, just volume.
 const LARGE_SESSION_MIN = 8;
 
-// Free, local milestone/birthday detection — no AI, no image analysis. It works off two
-// signals that don't require "seeing" the photo at all:
-//  1. Recurring date: if an existing album's photos were taken on this same month/day in a
-//     past year, this batch is almost certainly the same annual event (a birthday, an
-//     anniversary) — reuse that album's exact name so it auto-files into the same album
-//     year after year.
-//  2. Unusual volume: a day with far more photos than a typical day suggests something
-//     noteworthy happened, even if we can't say what — flagged for the parent to name.
+const bigDayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+function dayKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function distinctDays(photos: Photo[]): number {
+  return new Set(photos.map((p) => dayKey(p.capturedAt))).size;
+}
+
+// Free, local milestone/birthday detection — it works off capture dates alone, never the
+// pixels. Both rules only apply to a batch from a single day: a whole camera roll spanning
+// months isn't "a big day", and it would trivially share a month/day with some old album.
+//  1. Recurring date: if an existing single-event album (all its photos from one day) was shot
+//     on this same month/day in an earlier year, this is almost certainly the same annual event
+//     (a birthday, an anniversary) — reuse that album's name so it files the same way each year.
+//  2. Unusual volume: a single day with lots of photos suggests something worth naming —
+//     suggested as that day, marked as a big one, for the parent to rename.
+// Anything else gets the plain date-range name ("July 2026", "Jul–Sep 2026").
 export async function suggestMilestoneAlbumName(photos: Photo[]): Promise<string> {
   const fallback = suggestAlbumName(photos);
-  if (photos.length === 0) return fallback;
+  if (photos.length === 0 || distinctDays(photos) !== 1) return fallback;
 
   const sample = new Date(photos[0].capturedAt);
   const albums = await getAllAlbums();
 
   for (const album of albums) {
     const albumPhotos = await getPhotosByAlbum(album.id);
-    const recurs = albumPhotos.some((p) => {
-      const d = new Date(p.capturedAt);
-      return (
-        d.getMonth() === sample.getMonth() && d.getDate() === sample.getDate() && d.getFullYear() !== sample.getFullYear()
-      );
-    });
-    if (recurs) return album.name;
+    if (albumPhotos.length === 0 || distinctDays(albumPhotos) !== 1) continue;
+    const d = new Date(albumPhotos[0].capturedAt);
+    if (d.getMonth() === sample.getMonth() && d.getDate() === sample.getDate() && d.getFullYear() < sample.getFullYear()) {
+      return album.name;
+    }
   }
 
   if (photos.length >= LARGE_SESSION_MIN) {
-    return `🎉 ${fallback} — looks like a big day`;
+    return `🎉 ${bigDayFormat.format(sample)} — a big day`;
   }
 
   return fallback;

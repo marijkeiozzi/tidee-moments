@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Person, Photo } from '../db/indexedDb';
 import { getAllPeople, getPhotosByIds, getPhotosByStatus, renamePerson, replaceAllPeople } from '../db/indexedDb';
+import * as faceapi from 'face-api.js';
 import { loadFaceModels, getFaceDescriptors, clusterFaces } from '../lib/faces';
 
 interface PeopleTabProps {
@@ -8,6 +9,39 @@ interface PeopleTabProps {
 }
 
 const MIN_CLUSTER_SIZE = 2;
+// A re-scanned cluster inherits an existing person's name (and id) when their representative
+// faces are this close — the same bar clusterFaces uses to call two faces one person.
+const SAME_PERSON_DISTANCE = 0.6;
+const SCAN_SIGNATURE_KEY = 'tidee:peopleScanSignature';
+
+// Face descriptors per photo for this page session, so re-scanning after keeping a few more
+// photos only runs detection on the new ones instead of the whole library again.
+const descriptorCache = new Map<string, Float32Array[]>();
+
+// Cheap fingerprint of exactly which photos are kept — when it matches the last scan, the
+// People list is already up to date and there's nothing to re-scan.
+function signatureOf(photos: Photo[]): string {
+  const ids = photos.map((p) => p.id).sort();
+  let h = 2166136261;
+  for (const id of ids) for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return `${ids.length}:${(h >>> 0).toString(36)}`;
+}
+
+function readSignature(): string | null {
+  try {
+    return localStorage.getItem(SCAN_SIGNATURE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSignature(sig: string) {
+  try {
+    localStorage.setItem(SCAN_SIGNATURE_KEY, sig);
+  } catch {
+    // Storage blocked — the scan just runs again next visit.
+  }
+}
 
 export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
   const [people, setPeople] = useState<Person[]>([]);
@@ -17,8 +51,22 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [lastScanSummary, setLastScanSummary] = useState<string | null>(null);
 
+  // "Auto-grouped": scan on its own whenever the set of kept photos has changed since the last
+  // scan (or there's never been one), instead of waiting for a button tap.
   useEffect(() => {
-    getAllPeople().then(setPeople);
+    let cancelled = false;
+    (async () => {
+      const existing = await getAllPeople();
+      if (cancelled) return;
+      setPeople(existing);
+      const kept = await getPhotosByStatus('kept');
+      if (cancelled || kept.length === 0) return;
+      if (signatureOf(kept) !== readSignature()) handleScan();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleRename(id: string, name: string) {
@@ -68,7 +116,11 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
         setProgress({ done: i, total: keptPhotos.length });
         const photo: Photo = keptPhotos[i];
         try {
-          const descriptors = await getFaceDescriptors(photo);
+          let descriptors = descriptorCache.get(photo.id);
+          if (!descriptors) {
+            descriptors = await getFaceDescriptors(photo);
+            descriptorCache.set(photo.id, descriptors);
+          }
           if (descriptors.length > 0) photosWithFaces++;
           for (const descriptor of descriptors) {
             entries.push({ photoId: photo.id, descriptor });
@@ -82,16 +134,36 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
 
       const allClusters = clusterFaces(entries);
       const clusters = allClusters.filter((c) => c.photoIds.length >= MIN_CLUSTER_SIZE);
-      const newPeople: Person[] = clusters.map((c, i) => ({
-        id: c.id,
-        name: `Person ${i + 1}`,
-        createdAt: Date.now(),
-        photoIds: c.photoIds,
-        centroid: Array.from(c.centroid),
-      }));
+      // Carry names over from the previous scan — re-scanning must never turn "Grandma" back
+      // into "Person 3". Each old person is matched to at most one new cluster, closest first.
+      const previous = await getAllPeople();
+      const unclaimed = new Set(previous.map((p) => p.id));
+      let unnamed = 0;
+      const newPeople: Person[] = clusters.map((c) => {
+        let match: Person | null = null;
+        let matchDistance = SAME_PERSON_DISTANCE;
+        for (const old of previous) {
+          if (!unclaimed.has(old.id)) continue;
+          const d = faceapi.euclideanDistance(Float32Array.from(old.centroid), c.centroid);
+          if (d < matchDistance) {
+            match = old;
+            matchDistance = d;
+          }
+        }
+        if (match) unclaimed.delete(match.id);
+        return {
+          id: match?.id ?? c.id,
+          name: match?.name ?? `Person ${previous.length + ++unnamed}`,
+          createdAt: match?.createdAt ?? Date.now(),
+          photoIds: c.photoIds,
+          // Keep the old centroid so the next re-scan matches against the same reference face.
+          centroid: match ? match.centroid : Array.from(c.centroid),
+        };
+      });
 
       await replaceAllPeople(newPeople);
       setPeople(newPeople);
+      writeSignature(signatureOf(keptPhotos));
       setLastScanSummary(
         `Scanned ${keptPhotos.length} photo${keptPhotos.length === 1 ? '' : 's'} · found faces in ${photosWithFaces} · ` +
           `${entries.length} face${entries.length === 1 ? '' : 's'} detected · grouped into ${newPeople.length} ` +
@@ -125,8 +197,8 @@ export default function PeopleTab({ onOpenPerson }: PeopleTabProps) {
       </button>
 
       <p className="text-xs text-[#A69C8E] mb-4">
-        Runs entirely on your device — no photo is ever sent anywhere for this. Scans photos you've already
-        kept, not your whole upload pile.
+        Runs entirely on your device — no photo is ever sent anywhere for this. Kept photos are scanned
+        automatically whenever they change; names you give people stay put.
       </p>
 
       {error && <p className="text-xs text-red-600 mb-4">{error}</p>}

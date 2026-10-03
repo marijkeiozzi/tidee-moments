@@ -55,7 +55,7 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
           e.stopPropagation();
           onDelete();
         }}
-        title="Delete album (photos stay — they just move to All Kept Photos)"
+        title="Delete album (the photos stay in your Timeline)"
         className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-white/90 text-[#A69C8E] hover:text-red-500 hover:bg-red-50 flex items-center justify-center shadow-sm transition-colors"
       >
         ✕

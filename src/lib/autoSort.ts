@@ -28,6 +28,22 @@ export interface MomentPhoto {
   similar: boolean;
   reason?: string;
   evidence?: string;
+  // Soft issues worth a second look (closed eyes, soft focus, dark...) on a photo that was
+  // still kept — never enough to set it aside on their own, but shown so the parent can decide.
+  flags: string[];
+}
+
+// Human-readable soft issues for the review badges — the same signals classifyPhoto treats as
+// "uncertain, keep", surfaced instead of silently swallowed.
+function softFlagsOf(c: ClassifySignals): string[] {
+  const flags: string[] = [];
+  if (c.faceCount > 0 && c.eyesClosed) flags.push(c.faceCount > 1 ? 'Someone blinked' : 'Eyes closed');
+  if (c.faceCount > 0 && c.facingAway) flags.push('Looking away');
+  if (c.isBlurry) flags.push('Soft focus');
+  if (c.isLowQuality && c.qualityReason === 'too-dark') flags.push('Too dark');
+  if (c.isLowQuality && c.qualityReason === 'overexposed') flags.push('Overexposed');
+  if (c.isLowQuality && c.qualityReason === 'low-resolution') flags.push('Low resolution');
+  return flags;
 }
 
 export interface Moment {
@@ -193,6 +209,23 @@ export async function runAutoSort(
     );
   }
 
+  // A run of near-identical shots longer than a burst's 6-photo cap gets split into several
+  // bursts, and each would otherwise force-keep its own winner — so ten copies of the same
+  // moment came out as two. A burst winner that is itself a near-exact duplicate of a better
+  // winner (from the any-time duplicate pass) gives way to it, and anything compared against it
+  // is re-pointed at the photo actually being kept.
+  for (const id of Array.from(forceKeepIds)) {
+    const ctx = dupContextById.get(id);
+    if (!ctx || ctx.comparePhotoId === id || ctx.hammingDistance > STRICT_DUPLICATE_CEILING) continue;
+    if (!forceKeepIds.has(ctx.comparePhotoId)) continue;
+    forceKeepIds.delete(id);
+    for (const [otherId, other] of dupContextById) {
+      if (other.comparePhotoId === id && otherId !== ctx.comparePhotoId) {
+        dupContextById.set(otherId, { ...other, comparePhotoId: ctx.comparePhotoId });
+      }
+    }
+  }
+
   const debugRows: Record<string, unknown>[] = [];
   const keptIds = new Set<string>();
   const resultById = new Map<string, { reason: string; evidence: string }>();
@@ -253,6 +286,7 @@ export async function runAutoSort(
         similar: dupContextById.has(id),
         reason: r?.reason,
         evidence: r?.evidence,
+        flags: softFlagsOf(c),
       };
     });
     momentPhotos.sort((a, b) => a.photo.capturedAt - b.photo.capturedAt);
@@ -264,7 +298,16 @@ export async function runAutoSort(
     moments.push({
       id: `single-${c.photo.id}`,
       timestamp: c.photo.capturedAt,
-      photos: [{ photo: c.photo, kept: keptIds.has(c.photo.id), similar: dupContextById.has(c.photo.id), reason: r?.reason, evidence: r?.evidence }],
+      photos: [
+        {
+          photo: c.photo,
+          kept: keptIds.has(c.photo.id),
+          similar: dupContextById.has(c.photo.id),
+          reason: r?.reason,
+          evidence: r?.evidence,
+          flags: softFlagsOf(c),
+        },
+      ],
     });
   }
   moments.sort((a, b) => a.timestamp - b.timestamp);
