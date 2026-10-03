@@ -8,6 +8,9 @@ import PeopleTab from './components/PeopleTab';
 import PersonGrid from './components/PersonGrid';
 import AutoSortReview, { type ConfirmAlbumChoice } from './components/AutoSortReview';
 import SavingScreen from './components/SavingScreen';
+import LibrarySafety from './components/LibrarySafety';
+import RecentlyDeleted from './components/RecentlyDeleted';
+import BackupReminder from './components/BackupReminder';
 import {
   addPhotos,
   assignPhotoToAlbum,
@@ -16,6 +19,7 @@ import {
   getAllAlbums,
   getPhotosByAlbum,
   getPhotosByStatus,
+  purgeExpiredTrash,
   setPhotoNote,
   updatePhotoStatus,
   type Album,
@@ -43,6 +47,7 @@ export default function App() {
   const [creatingAlbum, setCreatingAlbum] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState('');
   const [openPerson, setOpenPerson] = useState<Person | null>(null);
+  const [showRecentlyDeleted, setShowRecentlyDeleted] = useState(false);
   const [activeSelection, setActiveSelection] = useState<'all' | string | null>(null);
   const [albumToast, setAlbumToast] = useState<string | null>(null);
   const [autoSorting, setAutoSorting] = useState(false);
@@ -69,6 +74,8 @@ export default function App() {
 
   useEffect(() => {
     navigator.storage?.persist?.().catch(() => {});
+    // Free up space taken by photos that have sat in Recently Deleted past their grace period.
+    purgeExpiredTrash().catch(() => {});
   }, []);
 
   const sessions = useMemo(() => groupIntoSessions(allInboxEver), [allInboxEver]);
@@ -382,6 +389,20 @@ export default function App() {
     );
   }
 
+  if (showRecentlyDeleted) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
+        <RecentlyDeleted
+          onBack={() => {
+            setShowRecentlyDeleted(false);
+            refreshAlbums();
+            refreshKeptWithoutAlbumCount();
+          }}
+        />
+      </div>
+    );
+  }
+
   if (openPerson) {
     return (
       <div className="max-w-2xl mx-auto p-4 min-h-screen bg-[#F6F1E7] text-[#231F1B]">
@@ -437,6 +458,8 @@ export default function App() {
             </button>
           </nav>
         </header>
+
+        <BackupReminder keptCount={keptWithoutAlbumCount} />
 
       {tab === 'sort' && (
         <div className="flex flex-col flex-1 gap-4">
@@ -676,6 +699,17 @@ export default function App() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'albums' && (
+        <LibrarySafety
+          onOpenRecentlyDeleted={() => setShowRecentlyDeleted(true)}
+          onRestored={() => {
+            refreshAlbums();
+            refreshKeptWithoutAlbumCount();
+            refreshInbox();
+          }}
+        />
       )}
 
       {tab === 'people' && <PeopleTab onOpenPerson={setOpenPerson} />}

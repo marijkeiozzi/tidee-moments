@@ -26,6 +26,8 @@ export interface Photo {
   analysis: AiAnalysis | null;
   note: string;
   isScreenshot: boolean;
+  // When it was moved to Recently Deleted — it's removed for good TRASH_RETENTION_DAYS later.
+  trashedAt?: number | null;
 }
 
 export interface Album {
@@ -180,7 +182,51 @@ export async function updatePhotoStatus(id: string, status: PhotoStatus): Promis
   const photo = await db.get('photos', id);
   if (!photo) return;
   photo.status = status;
+  photo.trashedAt = status === 'trashed' ? Date.now() : null;
   await db.put('photos', photo);
+}
+
+// Set-aside photos wait in Recently Deleted this long before they're removed for good —
+// long enough to notice a mistake, short enough that the browser's storage doesn't fill up
+// with thousands of photos nobody wanted (they used to be kept forever, invisibly).
+export const TRASH_RETENTION_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export async function getTrashedPhotos(): Promise<Photo[]> {
+  const db = await getDb();
+  const trashed = await db.getAllFromIndex('photos', 'by-status', 'trashed');
+  return trashed.sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
+}
+
+export function daysUntilPurge(photo: Photo, now = Date.now()): number {
+  const since = photo.trashedAt ?? now;
+  return Math.max(0, Math.ceil((since + TRASH_RETENTION_DAYS * DAY_MS - now) / DAY_MS));
+}
+
+export async function restorePhotos(ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => updatePhotoStatus(id, 'kept')));
+}
+
+export async function deletePhotosForever(ids: string[]): Promise<void> {
+  const db = await getDb();
+  await Promise.all(ids.map((id) => db.delete('photos', id)));
+}
+
+// Runs once per app load. Photos trashed before trashedAt existed get the full grace period
+// starting now rather than being purged on the spot.
+export async function purgeExpiredTrash(now = Date.now()): Promise<number> {
+  const db = await getDb();
+  const trashed = await db.getAllFromIndex('photos', 'by-status', 'trashed');
+  let purged = 0;
+  for (const photo of trashed) {
+    if (photo.trashedAt == null) {
+      await db.put('photos', { ...photo, trashedAt: now });
+    } else if (now - photo.trashedAt >= TRASH_RETENTION_DAYS * DAY_MS) {
+      await db.delete('photos', photo.id);
+      purged++;
+    }
+  }
+  return purged;
 }
 
 export async function setPhotoNote(id: string, note: string): Promise<void> {
@@ -295,4 +341,49 @@ export async function renamePerson(id: string, name: string): Promise<void> {
   if (!person) return;
   person.name = name;
   await db.put('people', person);
+}
+
+// Restoring a backup merges into whatever is already here instead of replacing it: photos and
+// people already present (same id) are left alone, and an album that already exists under the
+// same name is reused rather than duplicated.
+export async function importLibraryRecords(
+  photos: Photo[],
+  albums: Album[],
+  people: Person[],
+): Promise<{ added: number; skipped: number; albums: number }> {
+  const db = await getDb();
+  const existingAlbums = await db.getAll('albums');
+  const albumIdMap = new Map<string, string>();
+  let newAlbums = 0;
+  for (const album of albums) {
+    const sameId = existingAlbums.find((a) => a.id === album.id);
+    const sameName = existingAlbums.find((a) => a.name.trim().toLowerCase() === album.name.trim().toLowerCase());
+    const target = sameId ?? sameName;
+    if (target) {
+      albumIdMap.set(album.id, target.id);
+    } else {
+      await db.put('albums', album);
+      existingAlbums.push(album);
+      albumIdMap.set(album.id, album.id);
+      newAlbums++;
+    }
+  }
+
+  let added = 0;
+  let skipped = 0;
+  for (const photo of photos) {
+    if (await db.getKey('photos', photo.id)) {
+      skipped++;
+      continue;
+    }
+    const albumId = photo.albumId ? (albumIdMap.get(photo.albumId) ?? photo.albumId) : null;
+    await db.put('photos', { ...photo, albumId });
+    added++;
+  }
+
+  for (const person of people) {
+    if (!(await db.getKey('people', person.id))) await db.put('people', person);
+  }
+
+  return { added, skipped, albums: newAlbums };
 }
