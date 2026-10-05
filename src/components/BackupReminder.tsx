@@ -35,7 +35,7 @@ export default function BackupReminder({ keptCount }: { keptCount: number }) {
     try {
       const r = await createBackup((d, t) => setProgress(`Packing ${d} of ${t}…`));
       setDone(
-        `Backup downloaded (${r.photos} photos${r.parts > 1 ? `, ${r.parts} files` : ''}). Keep it somewhere safe, like iCloud Drive or Google Drive.`,
+        `Backup ready (${r.photos} photos${r.parts > 1 ? `, ${r.parts} files` : ''}). Save it from the panel, then keep it somewhere safe like iCloud Drive or Google Drive.`,
       );
     } catch (err) {
       setDone(`Backup failed: ${err instanceof Error ? err.message : String(err)} — try again from the Albums tab.`);

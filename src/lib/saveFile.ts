@@ -2,12 +2,12 @@ import { isMobileDevice } from './concurrency';
 
 // Getting a finished file (a zip export, a share page, a backup) to the person.
 //
-// Computers: a normal download, started straight away.
-// Phones: iPhone Safari only allows a download or the share sheet straight from a tap — after
-// seconds of building a zip, the original tap no longer counts and the download is silently
-// blocked (that's why "Export zip" did nothing on iPhone). So on phones the file is handed to a
-// small "Your file is ready" sheet, and tapping its button (a fresh tap) opens the share sheet:
-// Save to Files, AirDrop, Messages, Mail...
+// Browsers only reliably allow a download that starts directly from the person's own click. A
+// zip that takes seconds to build is no longer "from a click" by the time it's ready — iPhone
+// Safari and Mac Safari then block the download silently, and some in-app browsers block
+// script-started downloads altogether. So every finished file is shown in a small "Your file is
+// ready" panel (FileReadySheet) with a real download link to click, plus a Share button on
+// phones (Save to Files, AirDrop, Messages...).
 
 export const FILE_READY_EVENT = 'tidee:file-ready';
 
@@ -16,38 +16,25 @@ export interface ReadyFile {
   label: string; // e.g. "Backup part 2 of 3"
 }
 
-export function downloadNow(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // Revoking straight away can cancel the download before the browser has started reading it.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
 export function deliverFile(blob: Blob, filename: string, label = filename) {
-  if (!isMobileDevice()) {
-    downloadNow(blob, filename);
-    return;
-  }
   const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
   window.dispatchEvent(new CustomEvent<ReadyFile>(FILE_READY_EVENT, { detail: { file, label } }));
 }
 
-// Must be called from a tap handler.
-export async function shareOrDownload(file: File): Promise<'shared' | 'downloaded' | 'cancelled'> {
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: file.name });
-      return 'shared';
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
-      // Share failed for another reason — fall back to a plain download below.
-    }
+export function canShareFile(file: File): boolean {
+  try {
+    return isMobileDevice() && Boolean(navigator.canShare?.({ files: [file] }));
+  } catch {
+    return false;
   }
-  downloadNow(file, file.name);
-  return 'downloaded';
+}
+
+// Must be called from a tap handler.
+export async function shareFile(file: File): Promise<'shared' | 'cancelled' | 'failed'> {
+  try {
+    await navigator.share({ files: [file], title: file.name });
+    return 'shared';
+  } catch (err) {
+    return err instanceof DOMException && err.name === 'AbortError' ? 'cancelled' : 'failed';
+  }
 }

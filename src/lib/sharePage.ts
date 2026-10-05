@@ -1,6 +1,7 @@
 import type { Photo } from '../db/indexedDb';
 import { getDisplayableBlob } from '../hooks/usePhotoUrl';
 import { photoFilename } from './filename';
+import { mapWithConcurrency, pickPhotoConcurrency } from './concurrency';
 
 function blobToDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -21,17 +22,42 @@ export interface ShareablePageResult {
   failed: number;
 }
 
+// The page is one file meant to be texted or emailed to family, so its photos are sized for
+// screens, not printing: full camera originals made a 7-photo page 57 MB. 2048px on the long
+// side still looks sharp on any phone, tablet or laptop and saves fine; "Export zip" is the way
+// to hand over full-size originals.
+const SHARE_MAX_SIDE = 2048;
+
+async function resizeForSharing(blob: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const scale = Math.min(1, SHARE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && blob.type === 'image/jpeg') return blob;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return blob;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+    canvas.width = canvas.height = 0;
+    return out ?? blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
 export async function buildShareablePage(albumName: string, photos: Photo[]): Promise<ShareablePageResult> {
-  const results = await Promise.all(
-    photos.map(async (photo) => {
-      try {
-        const dataUri = await getDisplayableBlob(photo).then(blobToDataUri);
-        return { photo, dataUri };
-      } catch {
-        return { photo, dataUri: null };
-      }
-    }),
-  );
+  // A couple at a time — each one is a full-size decode, and a whole album at once ran phones
+  // out of memory.
+  const results = await mapWithConcurrency(photos, pickPhotoConcurrency(), async (photo) => {
+    try {
+      const dataUri = await getDisplayableBlob(photo).then(resizeForSharing).then(blobToDataUri);
+      return { photo, dataUri };
+    } catch {
+      return { photo, dataUri: null };
+    }
+  });
 
   const usable = results.filter((r): r is { photo: Photo; dataUri: string } => r.dataUri !== null);
   const failed = results.length - usable.length;
@@ -53,7 +79,7 @@ export async function buildShareablePage(albumName: string, photos: Photo[]): Pr
         <figure>
           <img src="${dataUri}" alt="" loading="lazy" />
           ${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''}
-          <a class="save-btn" href="${dataUri}" download="${filename}">⬇ Save</a>
+          <a class="save-btn" href="#" download="${filename}" onclick="this.href=this.parentNode.querySelector('img').src">⬇ Save</a>
         </figure>`;
     })
     .join('\n');

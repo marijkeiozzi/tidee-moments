@@ -62,9 +62,9 @@ export default function LibrarySafety({ onOpenRecentlyDeleted, onRestored }: Lib
       setMessage({
         tone: r.failed > 0 ? 'warn' : 'ok',
         text:
-          `Backup downloaded — ${r.photos} photo${r.photos === 1 ? '' : 's'}` +
+          `Backup ready — ${r.photos} photo${r.photos === 1 ? '' : 's'}` +
           (r.parts > 1 ? ` in ${r.parts} files (keep all of them together)` : '') +
-          '. Save it somewhere safe, like iCloud Drive, Google Drive or a computer.' +
+          '. Save it from the panel, then keep it somewhere safe like iCloud Drive, Google Drive or a computer.' +
           (r.failed > 0 ? ` ${r.failed} photo${r.failed === 1 ? '' : 's'} couldn't be read and were left out.` : ''),
       });
     } catch (err) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import JSZip from 'jszip';
 import type { Album, Photo } from '../db/indexedDb';
-import { assignPhotoToAlbum, createAlbum, getAllAlbums, setPhotoNote } from '../db/indexedDb';
+import { assignPhotoToAlbum, createAlbum, getAllAlbums, getPhotosByIds, setPhotoNote } from '../db/indexedDb';
 import { buildShareablePage } from '../lib/sharePage';
 import { deliverFile } from '../lib/saveFile';
 import { photoFilename } from '../lib/filename';
@@ -17,9 +17,21 @@ interface AlbumGridProps {
   keepAfterMove?: boolean;
 }
 
+// Safari can invalidate a Blob it handed out from IndexedDB; re-read it fresh before giving up.
+async function readPhotoBytes(photo: Photo): Promise<ArrayBuffer> {
+  try {
+    return await photo.blob.arrayBuffer();
+  } catch {
+    const [fresh] = await getPhotosByIds([photo.id]);
+    if (!fresh) throw new Error('Photo no longer stored');
+    return fresh.blob.arrayBuffer();
+  }
+}
+
 export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, keepAfterMove = false }: AlbumGridProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [buildingPage, setBuildingPage] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -96,8 +108,9 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, ke
       const usedNames = new Set<string>();
       for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
+        if (i % 5 === 0) setExportProgress(`Packing ${i + 1} of ${photos.length}…`);
         try {
-          const bytes = await photo.blob.arrayBuffer();
+          const bytes = await readPhotoBytes(photo);
           const ext = photo.blob.type.split('/')[1] || 'jpg';
           let name = photoFilename(photo.note, title, i + 1, ext);
           // Two photos captioned the same thing would otherwise silently overwrite each other
@@ -120,7 +133,12 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, ke
         return;
       }
 
-      const blob = await zip.generateAsync({ type: 'blob' });
+      // Photos are already compressed — storing them as they are is many times faster than
+      // re-compressing every JPEG (which made big albums sit on "Zipping…" for minutes) and the
+      // zip comes out the same size.
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, (meta) =>
+        setExportProgress(`Finishing… ${Math.round(meta.percent)}%`),
+      );
       deliverFile(blob, `${title}.zip`, `${title} — photos (zip)`);
 
       setExportNote(
@@ -129,6 +147,7 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, ke
     } catch (err) {
       setExportNote(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      setExportProgress(null);
       setExporting(false);
     }
   }
@@ -175,7 +194,7 @@ export default function AlbumGrid({ title, fetchPhotos, onBack, emptyMessage, ke
             disabled={exporting || photos.length === 0}
             className="text-sm font-medium bg-[#231F1B] hover:bg-black text-white px-4 py-2 rounded-full transition-colors disabled:opacity-40"
           >
-            {exporting ? 'Zipping…' : 'Export zip'}
+            {exporting ? (exportProgress ?? 'Preparing…') : 'Export zip'}
           </button>
         </div>
       </div>
