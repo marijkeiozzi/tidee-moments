@@ -9,6 +9,7 @@
     "test": "tsx src/lib/classifyPhoto.test.ts && tsx src/lib/sceneCategories.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",

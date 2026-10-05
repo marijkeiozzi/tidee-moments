@@ -1,4 +1,5 @@
 import HeroShowcase from './HeroShowcase';
+import { PRICING, paymentsEnabled } from '../config';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -76,7 +77,9 @@ const FEATURES = [
 const FAQS = [
   {
     q: 'Is it actually free?',
-    a: 'Yes — every feature works with no account and no cost. Nothing to upgrade, nothing hidden behind a paywall.',
+    a: paymentsEnabled
+      ? `Sorting is always free, with no account. Saving up to ${PRICING.freePhotoLimit} photos is free too; past that it's a one-time ${PRICING.priceLabel} unlock — no subscription, nothing hidden.`
+      : 'Yes — every feature works with no account and no cost. Nothing to upgrade, nothing hidden behind a paywall.',
   },
   {
     q: 'Do my photos get uploaded anywhere?',

@@ -9,6 +9,10 @@ import PersonGrid from './components/PersonGrid';
 import AutoSortReview, { type ConfirmAlbumChoice } from './components/AutoSortReview';
 import SavingScreen from './components/SavingScreen';
 import SortProgress from './components/SortProgress';
+import AccountMenu from './components/AccountMenu';
+import UpgradeDialog from './components/UpgradeDialog';
+import { useAccount } from './lib/account';
+import { PRICING, paymentsEnabled } from './config';
 import LibrarySafety from './components/LibrarySafety';
 import RecentlyDeleted from './components/RecentlyDeleted';
 import BackupReminder from './components/BackupReminder';
@@ -59,6 +63,9 @@ export default function App() {
   const [sensitivity, setSensitivity] = useState<Sensitivity>('balanced');
   const [resorting, setResorting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Set when Create album would go past the free limit — the save waits on the unlock dialog.
+  const [upgradeChoice, setUpgradeChoice] = useState<ConfirmAlbumChoice | null>(null);
+  const account = useAccount();
   const [savingProgress, setSavingProgress] = useState<{ done: number; total: number; photo: Photo | null } | null>(null);
   // Every inbox photo ever seen, kept even after it's swiped away — so session boundaries
   // (computed from this) don't shift as the live queue shrinks mid-sort.
@@ -262,8 +269,14 @@ export default function App() {
     });
   }
 
-  async function handleConfirmAutoSort(choice: ConfirmAlbumChoice) {
+  async function handleConfirmAutoSort(choice: ConfirmAlbumChoice, unlocked = account.isPaid) {
     if (!autoSortResult) return;
+    // Sorting is always free; saving past the free limit needs the one-time unlock. (Only when
+    // payments are set up in config.ts — until then everyone saves without limit.)
+    if (paymentsEnabled && !unlocked && keptWithoutAlbumCount + autoSortResult.keep.length > PRICING.freePhotoLimit) {
+      setUpgradeChoice(choice);
+      return;
+    }
     setConfirmingAutoSort(true);
     setSaveError(null);
     const { keep, toDelete } = autoSortResult;
@@ -446,6 +459,7 @@ export default function App() {
             >
               People
             </button>
+            <AccountMenu />
             <button
               onClick={() => setView('landing')}
               title="Back to home"
@@ -720,6 +734,18 @@ export default function App() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#231F1B] text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg z-50">
           {albumToast}
         </div>
+      )}
+      {upgradeChoice && autoSortResult && (
+        <UpgradeDialog
+          savingCount={autoSortResult.keep.length}
+          alreadySaved={keptWithoutAlbumCount}
+          onClose={() => setUpgradeChoice(null)}
+          onUnlocked={() => {
+            const choice = upgradeChoice;
+            setUpgradeChoice(null);
+            handleConfirmAutoSort(choice, true);
+          }}
+        />
       )}
       </div>
     </div>
