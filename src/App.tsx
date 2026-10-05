@@ -20,6 +20,7 @@ import {
   getAllAlbums,
   getPhotosByAlbum,
   getPhotosByStatus,
+  savePhotoChoices,
   purgeExpiredTrash,
   setPhotoNote,
   updatePhotoStatus,
@@ -57,6 +58,7 @@ export default function App() {
   const [confirmingAutoSort, setConfirmingAutoSort] = useState(false);
   const [sensitivity, setSensitivity] = useState<Sensitivity>('balanced');
   const [resorting, setResorting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [savingProgress, setSavingProgress] = useState<{ done: number; total: number; photo: Photo | null } | null>(null);
   // Every inbox photo ever seen, kept even after it's swiped away — so session boundaries
   // (computed from this) don't shift as the live queue shrinks mid-sort.
@@ -263,26 +265,18 @@ export default function App() {
   async function handleConfirmAutoSort(choice: ConfirmAlbumChoice) {
     if (!autoSortResult) return;
     setConfirmingAutoSort(true);
+    setSaveError(null);
     const { keep, toDelete } = autoSortResult;
     setSavingProgress({ done: 0, total: keep.length, photo: keep[0] ?? null });
     try {
-      setInbox((prev) => prev.filter((p) => !keep.some((k) => k.id === p.id) && !toDelete.some((d) => d.photo.id === p.id)));
-
-      await Promise.all(toDelete.map((d) => updatePhotoStatus(d.photo.id, 'trashed')));
-
       const albumName = choice.name;
-      let albumId: string | null = null;
-      if (albumName) {
-        const created = await createAlbum(albumName);
-        albumId = created.id;
-      }
-      let done = 0;
-      for (const p of keep) {
-        await updatePhotoStatus(p.id, 'kept');
-        if (albumId) await assignPhotoToAlbum(p.id, albumId);
-        done++;
-        setSavingProgress({ done, total: keep.length, photo: keep[done] ?? p });
-      }
+      const albumId = albumName ? (await createAlbum(albumName)).id : null;
+      // One all-or-nothing save of every choice in the review (see savePhotoChoices). Only once
+      // it has succeeded do the photos leave the review — if it fails, nothing is lost and the
+      // review stays exactly as it was to try again.
+      await savePhotoChoices({ keepIds: keep.map((p) => p.id), trashIds: toDelete.map((d) => d.photo.id), albumId });
+      setSavingProgress({ done: keep.length, total: keep.length, photo: keep[keep.length - 1] ?? null });
+      setInbox((prev) => prev.filter((p) => !keep.some((k) => k.id === p.id) && !toDelete.some((d) => d.photo.id === p.id)));
       if (albumId) {
         await refreshAlbums();
         setActiveAlbumId(albumId);
@@ -295,6 +289,13 @@ export default function App() {
       setAlbumToast(toastMessage);
       setTimeout(() => setAlbumToast(null), 3000);
       setAutoSortResult(null);
+    } catch (err) {
+      console.error('Saving the album failed', err);
+      setSaveError(
+        `Your album couldn't be saved — nothing was lost, your photos are still here. Please tap Create album again. (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
     } finally {
       setConfirmingAutoSort(false);
       setSavingProgress(null);
@@ -492,6 +493,12 @@ export default function App() {
               {savingProgress ? (
                 <SavingScreen progress={savingProgress} />
               ) : autoSortResult ? (
+                <>
+                {saveError && (
+                  <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3" role="alert">
+                    {saveError}
+                  </p>
+                )}
                 <AutoSortReview
                   keepPhotos={autoSortResult.keep}
                   deletePhotos={autoSortResult.toDelete}
@@ -504,6 +511,7 @@ export default function App() {
                   onCancel={handleCancelAutoSort}
                   confirming={confirmingAutoSort}
                 />
+                </>
               ) : autoSorting ? (
                 <div className="py-8">
                   <SortProgress

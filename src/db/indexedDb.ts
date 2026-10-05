@@ -33,6 +33,37 @@ export interface Photo {
   hasCameraExif?: boolean;
 }
 
+// The parts of a photo that change after upload. They live in their own small record so that
+// keeping, setting aside, filing into an album or captioning a photo never rewrites the photo
+// itself. Rewriting full-size images was slow, and iPhone Safari intermittently fails to
+// re-store an image it has just read back from storage ("UnknownError: Error preparing
+// Blob/File data") — which stopped "Create album" after the first photo.
+export interface PhotoMeta {
+  id: string;
+  status: PhotoStatus;
+  albumId: string | null;
+  note: string;
+  isScreenshot: boolean;
+  trashedAt?: number | null;
+}
+
+function metaOf(photo: Photo): PhotoMeta {
+  return {
+    id: photo.id,
+    status: photo.status,
+    albumId: photo.albumId ?? null,
+    note: photo.note ?? '',
+    isScreenshot: photo.isScreenshot ?? false,
+    trashedAt: photo.trashedAt ?? null,
+  };
+}
+
+// The stored photo record still carries the values it was uploaded with; the meta record is
+// the source of truth for status, album, caption, screenshot flag and trash date.
+function withMeta(photo: Photo, meta: PhotoMeta | undefined): Photo {
+  return meta ? { ...photo, status: meta.status, albumId: meta.albumId, note: meta.note, isScreenshot: meta.isScreenshot, trashedAt: meta.trashedAt } : photo;
+}
+
 export interface Album {
   id: string;
   name: string;
@@ -67,13 +98,18 @@ interface PhotoAppDB extends DBSchema {
     key: string;
     value: { id: string; blob: Blob };
   };
+  meta: {
+    key: string;
+    value: PhotoMeta;
+    indexes: { 'by-status': PhotoStatus; 'by-album': string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<PhotoAppDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<PhotoAppDB>('photo-app', 6, {
+    dbPromise = openDB<PhotoAppDB>('photo-app', 7, {
       upgrade(db, oldVersion, _newVersion, tx) {
         let photos;
         if (oldVersion < 1) {
@@ -120,6 +156,18 @@ function getDb() {
         if (oldVersion < 6) {
           db.createObjectStore('thumbs', { keyPath: 'id' });
         }
+        if (oldVersion < 7) {
+          const meta = db.createObjectStore('meta', { keyPath: 'id' });
+          meta.createIndex('by-status', 'status');
+          meta.createIndex('by-album', 'albumId');
+          // Copy each existing photo's status/album/caption into its own small record. Only the
+          // small records are written — the photos (and their images) are just read.
+          photos.openCursor().then(function copy(cursor): unknown {
+            if (!cursor) return;
+            meta.put(metaOf(cursor.value));
+            return cursor.continue().then(copy);
+          });
+        }
       },
     });
   }
@@ -165,7 +213,7 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
           ? file
           : new Blob([file], { type: 'image/jpeg' })
         : new Blob([await file.arrayBuffer()], { type: file.type || 'image/jpeg' });
-      await db.put('photos', {
+      const photo: Photo = {
         id: crypto.randomUUID(),
         blob: safeBlob,
         createdAt: Date.now(),
@@ -176,7 +224,9 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
         note: '',
         isScreenshot,
         hasCameraExif,
-      });
+      };
+      const tx = db.transaction(['photos', 'meta'], 'readwrite');
+      await Promise.all([tx.objectStore('photos').put(photo), tx.objectStore('meta').put(metaOf(photo)), tx.done]);
       added++;
     } catch (err) {
       console.error('Failed to save photo', file.name, err);
@@ -189,21 +239,76 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
 
 export async function getAllPhotos(): Promise<Photo[]> {
   const db = await getDb();
-  return db.getAll('photos');
+  const tx = db.transaction(['photos', 'meta']);
+  const [photos, metas] = await Promise.all([tx.objectStore('photos').getAll(), tx.objectStore('meta').getAll()]);
+  const metaById = new Map(metas.map((m) => [m.id, m]));
+  return photos.map((p) => withMeta(p, metaById.get(p.id)));
+}
+
+// Photos for a set of meta records, read in one transaction.
+async function photosFor(metas: PhotoMeta[]): Promise<Photo[]> {
+  const db = await getDb();
+  const store = db.transaction('photos').objectStore('photos');
+  const photos = await Promise.all(metas.map((m) => store.get(m.id)));
+  return photos.flatMap((p, i) => (p ? [withMeta(p, metas[i])] : []));
 }
 
 export async function getPhotosByStatus(status: PhotoStatus): Promise<Photo[]> {
   const db = await getDb();
-  return db.getAllFromIndex('photos', 'by-status', status);
+  return photosFor(await db.getAllFromIndex('meta', 'by-status', status));
+}
+
+// Changes only the small meta record — never the stored image.
+async function updateMeta(id: string, change: Partial<Omit<PhotoMeta, 'id'>>): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction(['meta', 'photos'], 'readwrite');
+  const metaStore = tx.objectStore('meta');
+  let meta = await metaStore.get(id);
+  if (!meta) {
+    const photo = await tx.objectStore('photos').get(id);
+    if (!photo) return;
+    meta = metaOf(photo);
+  }
+  await metaStore.put({ ...meta, ...change });
+  await tx.done;
 }
 
 export async function updatePhotoStatus(id: string, status: PhotoStatus): Promise<void> {
+  await updateMeta(id, { status, trashedAt: status === 'trashed' ? Date.now() : null });
+}
+
+// Saves a whole review in ONE transaction: every kept photo (filed into the album, if any) and
+// every set-aside photo — so it's either all saved or none of it, never half an album.
+export async function savePhotoChoices(choices: { keepIds: string[]; trashIds: string[]; albumId: string | null }): Promise<void> {
   const db = await getDb();
-  const photo = await db.get('photos', id);
-  if (!photo) return;
-  photo.status = status;
-  photo.trashedAt = status === 'trashed' ? Date.now() : null;
-  await db.put('photos', photo);
+  const tx = db.transaction(['meta', 'photos'], 'readwrite');
+  const metaStore = tx.objectStore('meta');
+  const photoStore = tx.objectStore('photos');
+  const now = Date.now();
+  async function apply(id: string, change: Partial<Omit<PhotoMeta, 'id'>>) {
+    const meta = (await metaStore.get(id)) ?? (await photoStore.get(id).then((p) => (p ? metaOf(p) : undefined)));
+    if (meta) await metaStore.put({ ...meta, ...change });
+  }
+  const done = tx.done;
+  done.catch(() => {}); // a failure is reported below, not as an unhandled rejection
+  // allSettled, not all: every in-flight write finishes (or is cancelled) before deciding, so a
+  // cancelled transaction leaves no stray errors behind.
+  const results = await Promise.allSettled([
+    ...choices.keepIds.map((id) => apply(id, { status: 'kept', trashedAt: null, ...(choices.albumId ? { albumId: choices.albumId } : {}) })),
+    ...choices.trashIds.map((id) => apply(id, { status: 'trashed', trashedAt: now })),
+  ]);
+  const failure = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failure) {
+    // Some storage errors are thrown straight from put() and don't cancel the transaction on
+    // their own — cancel it explicitly so the photos that did go through are rolled back too.
+    try {
+      tx.abort();
+    } catch {
+      // Already finished or aborted.
+    }
+    throw failure.reason;
+  }
+  await done;
 }
 
 // Set-aside photos wait in Recently Deleted this long before they're removed for good —
@@ -213,8 +318,7 @@ export const TRASH_RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function getTrashedPhotos(): Promise<Photo[]> {
-  const db = await getDb();
-  const trashed = await db.getAllFromIndex('photos', 'by-status', 'trashed');
+  const trashed = await getPhotosByStatus('trashed');
   return trashed.sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
 }
 
@@ -224,12 +328,12 @@ export function daysUntilPurge(photo: Photo, now = Date.now()): number {
 }
 
 export async function restorePhotos(ids: string[]): Promise<void> {
-  await Promise.all(ids.map((id) => updatePhotoStatus(id, 'kept')));
+  await savePhotoChoices({ keepIds: ids, trashIds: [], albumId: null });
 }
 
 export async function deletePhotosForever(ids: string[]): Promise<void> {
   const db = await getDb();
-  await Promise.all(ids.flatMap((id) => [db.delete('photos', id), db.delete('thumbs', id)]));
+  await Promise.all(ids.flatMap((id) => [db.delete('photos', id), db.delete('meta', id), db.delete('thumbs', id)]));
 }
 
 export async function getThumb(id: string): Promise<Blob | null> {
@@ -246,14 +350,13 @@ export async function saveThumb(id: string, blob: Blob): Promise<void> {
 // starting now rather than being purged on the spot.
 export async function purgeExpiredTrash(now = Date.now()): Promise<number> {
   const db = await getDb();
-  const trashed = await db.getAllFromIndex('photos', 'by-status', 'trashed');
+  const trashed = await db.getAllFromIndex('meta', 'by-status', 'trashed');
   let purged = 0;
-  for (const photo of trashed) {
-    if (photo.trashedAt == null) {
-      await db.put('photos', { ...photo, trashedAt: now });
-    } else if (now - photo.trashedAt >= TRASH_RETENTION_DAYS * DAY_MS) {
-      await db.delete('photos', photo.id);
-      await db.delete('thumbs', photo.id);
+  for (const meta of trashed) {
+    if (meta.trashedAt == null) {
+      await db.put('meta', { ...meta, trashedAt: now });
+    } else if (now - meta.trashedAt >= TRASH_RETENTION_DAYS * DAY_MS) {
+      await deletePhotosForever([meta.id]);
       purged++;
     }
   }
@@ -261,11 +364,7 @@ export async function purgeExpiredTrash(now = Date.now()): Promise<number> {
 }
 
 export async function setPhotoNote(id: string, note: string): Promise<void> {
-  const db = await getDb();
-  const photo = await db.get('photos', id);
-  if (!photo) return;
-  photo.note = note;
-  await db.put('photos', photo);
+  await updateMeta(id, { note });
 }
 
 // Permanently replaces a photo's stored blob — used to repair photos that were saved
@@ -289,26 +388,16 @@ export async function setPhotoAnalysis(id: string, analysis: AiAnalysis): Promis
 // AI-detected documents (receipts, forms, whiteboards) get filed the same place as
 // screenshots — they aren't "memory" photos either.
 export async function markAsScreenshot(id: string): Promise<void> {
-  const db = await getDb();
-  const photo = await db.get('photos', id);
-  if (!photo) return;
-  photo.isScreenshot = true;
-  await db.put('photos', photo);
+  await updateMeta(id, { isScreenshot: true });
 }
 
 export async function getKeptPhotosWithoutAlbum(): Promise<Photo[]> {
-  const db = await getDb();
-  const kept = await db.getAllFromIndex('photos', 'by-status', 'kept');
+  const kept = await getPhotosByStatus('kept');
   return kept.filter((p) => !p.albumId);
 }
 
 export async function assignPhotoToAlbum(id: string, albumId: string): Promise<void> {
-  const db = await getDb();
-  const photo = await db.get('photos', id);
-  if (!photo) return;
-  photo.albumId = albumId;
-  photo.status = 'kept';
-  await db.put('photos', photo);
+  await updateMeta(id, { albumId, status: 'kept', trashedAt: null });
 }
 
 // Reuses an existing album if one already has this name (case-insensitive) instead of
@@ -334,23 +423,26 @@ export async function getAllAlbums(): Promise<Album[]> {
 // general kept pool, same as the rest of the app's "delete never touches your photos" rule.
 export async function deleteAlbum(id: string): Promise<number> {
   const db = await getDb();
-  const photos = await db.getAllFromIndex('photos', 'by-album', id);
-  const tx = db.transaction(['photos', 'albums'], 'readwrite');
-  await Promise.all(photos.map((p) => tx.objectStore('photos').put({ ...p, albumId: null })));
+  const metas = await db.getAllFromIndex('meta', 'by-album', id);
+  const tx = db.transaction(['meta', 'albums'], 'readwrite');
+  await Promise.all(metas.map((m) => tx.objectStore('meta').put({ ...m, albumId: null })));
   await tx.objectStore('albums').delete(id);
   await tx.done;
-  return photos.length;
+  return metas.length;
 }
 
 export async function getPhotosByAlbum(albumId: string): Promise<Photo[]> {
   const db = await getDb();
-  return db.getAllFromIndex('photos', 'by-album', albumId);
+  return photosFor(await db.getAllFromIndex('meta', 'by-album', albumId));
 }
 
 export async function getPhotosByIds(ids: string[]): Promise<Photo[]> {
   const db = await getDb();
-  const photos = await Promise.all(ids.map((id) => db.get('photos', id)));
-  return photos.filter((p): p is Photo => Boolean(p));
+  const tx = db.transaction(['photos', 'meta']);
+  const rows = await Promise.all(
+    ids.map(async (id) => [await tx.objectStore('photos').get(id), await tx.objectStore('meta').get(id)] as const),
+  );
+  return rows.flatMap(([p, m]) => (p ? [withMeta(p, m)] : []));
 }
 
 export async function replaceAllPeople(people: Person[]): Promise<void> {
@@ -408,7 +500,9 @@ export async function importLibraryRecords(
       continue;
     }
     const albumId = photo.albumId ? (albumIdMap.get(photo.albumId) ?? photo.albumId) : null;
-    await db.put('photos', { ...photo, albumId });
+    const restored = { ...photo, albumId };
+    const tx = db.transaction(['photos', 'meta'], 'readwrite');
+    await Promise.all([tx.objectStore('photos').put(restored), tx.objectStore('meta').put(metaOf(restored)), tx.done]);
     added++;
   }
 
