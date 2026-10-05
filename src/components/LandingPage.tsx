@@ -110,10 +110,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </span>
           <nav className="hidden sm:flex items-center gap-8 text-[15px]">
             <button onClick={onGetStarted} className="text-[#231F1B] font-medium hover:opacity-70 transition-opacity">
-              Albums
+              Sort photos
             </button>
             <button onClick={onGetStarted} className="text-[#8A8177] hover:text-[#231F1B] transition-colors">
-              Sort photos
+              Albums
             </button>
           </nav>
           <button

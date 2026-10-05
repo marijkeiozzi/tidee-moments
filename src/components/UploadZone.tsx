@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import SortProgress from './SortProgress';
 import { getFileMeta } from '../lib/photoDate';
 import { convertHeicIfNeeded, isHeicFile } from '../lib/heicConvert';
 import { isMobileDevice, mapWithConcurrency } from '../lib/concurrency';
@@ -9,6 +10,9 @@ interface UploadZoneProps {
   onSavePhotos: (entries: NewPhotoEntry[]) => Promise<AddPhotosResult>;
   // Called once at the end, so sorting starts on the whole batch rather than a partial one.
   onUploadComplete: () => Promise<void>;
+  // A slim "add more photos" bar instead of the big drop zone — used while a review is on screen,
+  // so the review (and its Create album button) isn't pushed below the fold.
+  compact?: boolean;
 }
 
 // Reading and saving is mostly waiting on storage, so a few more at once than the photo checks
@@ -34,16 +38,16 @@ async function shouldConvertHeic(file: File): Promise<boolean> {
   return !(await nativeHeic);
 }
 
-// How often the on-screen counter updates during a big batch — updating state on every single
-// photo for a batch of thousands would trigger thousands of re-renders for no visible benefit;
-// this keeps the counter feeling live without that overhead.
-const PROGRESS_STEP = 10;
+// The progress bar updates at most this often — live on a slow phone (no waiting for 10 photos
+// before it first moves), without thousands of re-renders on a fast computer.
+const PROGRESS_INTERVAL_MS = 120;
 
-export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZoneProps) {
+export default function UploadZone({ onSavePhotos, onUploadComplete, compact = false }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
 
   async function handleFiles(fileList: File[]) {
     // Some mobile pickers (notably Android picking from a cloud-backed gallery like Google
@@ -63,7 +67,8 @@ export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZon
     // starts — otherwise the drop zone looks like nothing happened for the whole time it
     // takes to process a big batch, well before the sort-progress UI has anything to show.
     setProcessing(true);
-    setStatus(`Adding ${files.length} photo${files.length === 1 ? '' : 's'}…`);
+    setProgress({ done: 0, total: files.length });
+    setStatus(null);
     try {
       // Each photo goes all the way through — read, check, convert if needed, save — and is then
       // let go, a few at a time. The old way read EVERY photo into memory first and only then
@@ -73,6 +78,7 @@ export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZon
       let added = 0;
       let failed = 0;
       let screenshots = 0;
+      let lastShown = 0;
       await mapWithConcurrency(files, pickUploadConcurrency(), async (file) => {
         try {
           // A plain in-memory copy first: a phone picker's read permission on the original can
@@ -91,8 +97,10 @@ export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZon
           failed++;
         }
         done++;
-        if (done % PROGRESS_STEP === 0 || done === files.length) {
-          setStatus(`Adding photos… ${done} of ${files.length}`);
+        const now = performance.now();
+        if (done === files.length || now - lastShown > PROGRESS_INTERVAL_MS) {
+          lastShown = now;
+          setProgress({ done, total: files.length });
         }
       });
 
@@ -112,7 +120,11 @@ export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZon
   return (
     <div>
       <div
-        className="border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-3xl px-6 py-16 sm:py-20 text-center cursor-pointer hover:border-[#BB5133]/40 transition-colors"
+        className={
+          compact && !processing
+            ? 'border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:border-[#BB5133]/40 transition-colors'
+            : 'border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-3xl px-6 py-16 sm:py-20 text-center cursor-pointer hover:border-[#BB5133]/40 transition-colors'
+        }
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -120,9 +132,33 @@ export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZon
           handleFiles(Array.from(e.dataTransfer.files));
         }}
       >
-        {processing ? (
-          <div className="w-9 h-9 mx-auto mb-5 rounded-full border-4 border-[#EFDFC8] border-t-[#BB5133] animate-spin" />
-        ) : (
+        {compact && !processing ? (
+          <>
+            <span className="text-sm text-[#5B5349]">Have more photos? Drop them here or</span>
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  inputRef.current?.click();
+                }}
+                className="text-sm font-semibold bg-[#231F1B] hover:bg-black text-white px-4 py-2 rounded-full transition-colors"
+              >
+                Add more photos
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  folderInputRef.current?.click();
+                }}
+                className="text-sm font-medium bg-white border border-black/10 text-[#231F1B] px-4 py-2 rounded-full hover:bg-[#F6F1E7] transition-colors"
+              >
+                Choose a folder
+              </button>
+            </span>
+          </>
+        ) : processing ? null : (
           <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-[#F6DFCF] flex items-center justify-center">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#BB5133" strokeWidth="1.8">
               <rect x="3" y="3" width="14" height="14" rx="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -132,8 +168,14 @@ export default function UploadZone({ onSavePhotos, onUploadComplete }: UploadZon
             </svg>
           </div>
         )}
-        {processing ? (
-          <p className="text-[#5B5349] font-medium">{status ?? 'Reading your photos…'}</p>
+        {compact && !processing ? null : processing ? (
+          <SortProgress
+            step={1}
+            title="Adding your photos"
+            done={progress.done}
+            total={progress.total}
+            note="Keep this page open. Sorting starts by itself as soon as they're all in."
+          />
         ) : (
           <>
             <h3 className="font-serif text-2xl sm:text-3xl mb-2">Drop photos here</h3>

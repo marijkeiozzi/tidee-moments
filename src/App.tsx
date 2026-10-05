@@ -8,6 +8,7 @@ import PeopleTab from './components/PeopleTab';
 import PersonGrid from './components/PersonGrid';
 import AutoSortReview, { type ConfirmAlbumChoice } from './components/AutoSortReview';
 import SavingScreen from './components/SavingScreen';
+import SortProgress from './components/SortProgress';
 import LibrarySafety from './components/LibrarySafety';
 import RecentlyDeleted from './components/RecentlyDeleted';
 import BackupReminder from './components/BackupReminder';
@@ -427,16 +428,16 @@ export default function App() {
           </button>
           <nav className="flex items-center gap-6 sm:gap-8 text-[15px] shrink-0">
             <button
-              onClick={() => setTab('albums')}
-              className={`whitespace-nowrap transition-colors ${tab === 'albums' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
-            >
-              Albums
-            </button>
-            <button
               onClick={() => setTab('sort')}
               className={`whitespace-nowrap transition-colors ${tab === 'sort' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
             >
               Sort photos{inbox.length > 0 ? ` (${inbox.length})` : ''}
+            </button>
+            <button
+              onClick={() => setTab('albums')}
+              className={`whitespace-nowrap transition-colors ${tab === 'albums' ? 'text-[#231F1B] font-medium' : 'text-[#8A8177] hover:text-[#231F1B]'}`}
+            >
+              Albums
             </button>
             <button
               onClick={() => setTab('people')}
@@ -461,7 +462,7 @@ export default function App() {
 
       {tab === 'sort' && (
         <div className="flex flex-col flex-1 gap-4">
-          {activeSelection === null && (
+          {activeSelection === null && !autoSortResult && (
             <div className="mb-2">
               <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-3">Bring in the whole camera roll.</h1>
               <p className="text-[#7A7266] text-base sm:text-lg max-w-2xl leading-relaxed">
@@ -470,7 +471,11 @@ export default function App() {
               </p>
             </div>
           )}
-          <UploadZone onSavePhotos={handleSavePhotos} onUploadComplete={refreshInbox} />
+          {/* Hidden while sorting so the step 2 progress bar takes its place, in view, instead of
+              appearing below a screen-tall drop zone on a phone. */}
+          {!autoSorting && (
+            <UploadZone onSavePhotos={handleSavePhotos} onUploadComplete={refreshInbox} compact={Boolean(autoSortResult)} />
+          )}
 
           {activeSelection === null && (
             <>
@@ -500,23 +505,14 @@ export default function App() {
                   confirming={confirmingAutoSort}
                 />
               ) : autoSorting ? (
-                <div className="flex flex-col items-center justify-center gap-3 text-[#8A8177] py-8">
-                  <span className="text-4xl">✨</span>
-                  <p className="font-semibold text-[#231F1B]">
-                    Sorting {autoSortProgress?.done ?? 0} of {autoSortProgress?.total ?? 0}…
-                  </p>
-                  <div className="w-64 h-2 bg-[#EFE9DD] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#BB5133] transition-all"
-                      style={{
-                        width: `${autoSortProgress ? (autoSortProgress.done / autoSortProgress.total) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="text-xs text-[#A69C8E] max-w-sm text-center">
-                    Blurry, closed-eyes, poor-quality, and duplicate shots get flagged automatically — all
-                    on your device, nothing uploaded. You'll review both piles before anything is final.
-                  </p>
+                <div className="py-8">
+                  <SortProgress
+                    step={2}
+                    title="Sorting your photos"
+                    done={autoSortProgress?.done ?? 0}
+                    total={autoSortProgress?.total ?? 0}
+                    note="Blurry, blank and duplicate shots are set aside automatically — all on your device, nothing uploaded. You'll review everything before anything is final."
+                  />
                 </div>
               ) : null}
             </>

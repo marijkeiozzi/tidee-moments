@@ -3,6 +3,9 @@ import { parse } from 'exifr';
 export interface FileMeta {
   capturedAt: number;
   isScreenshot: boolean;
+  // Camera Make/Model in the EXIF — written by the camera itself; screenshots, saved web images
+  // and crops never have it. Kept on the photo so the sort can use it too.
+  hasCameraExif: boolean;
 }
 
 const SCREENSHOT_NAME_PATTERN = /screen[\s_-]?shot/i;
@@ -69,5 +72,5 @@ export async function getFileMeta(file: File): Promise<FileMeta> {
   // second full decode of every photo during upload. The sort already runs the same document
   // check on its shared working copy and sets those aside ("Looks like a screenshot or
   // document"), so they still never end up in an album.
-  return { capturedAt, isScreenshot: nameMatches || formatMatches || dimensionMatches };
+  return { capturedAt, isScreenshot: nameMatches || formatMatches || dimensionMatches, hasCameraExif };
 }

@@ -45,7 +45,7 @@ function badgeLabel(reason: string | undefined, similar: boolean): string {
   if (r.includes('duplicate')) return 'Similar';
   if (r.includes('blurry')) return 'Blurry';
   if (r.includes('blank')) return 'Blank';
-  if (r.includes('screenshot') || r.includes('document')) return 'Screenshot';
+  if (r.includes('screenshot') || r.includes('document') || r.includes('saved image')) return 'Screenshot';
   if (r.includes('photo of a thing')) return 'Object';
   if (r.includes('moved to delete')) return 'Set aside';
   return similar ? 'Similar' : 'Set aside';
@@ -227,7 +227,7 @@ export default function AutoSortReview({
         <button
           onClick={() => setShowAlbumModal(true)}
           disabled={confirming || keepPhotos.length === 0}
-          className="ml-auto bg-[#231F1B] hover:bg-black text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-40"
+          className="hidden sm:inline-flex ml-auto bg-[#231F1B] hover:bg-black text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-40"
         >
           Create album · {keepPhotos.length}
         </button>
@@ -281,6 +281,19 @@ export default function AutoSortReview({
             </div>
           );
         })}
+      </div>
+
+      {/* Phones: the button lives in a bar pinned to the bottom of the screen, so it's always in
+          reach while scrolling through hundreds of photos instead of sitting off-screen. */}
+      <div className="h-24 sm:hidden" aria-hidden />
+      <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-[#F6F1E7] via-[#F6F1E7]/95 to-transparent">
+        <button
+          onClick={() => setShowAlbumModal(true)}
+          disabled={confirming || keepPhotos.length === 0}
+          className="w-full bg-[#231F1B] hover:bg-black text-white font-medium py-3.5 rounded-full shadow-lg transition-colors disabled:opacity-40"
+        >
+          Create album · {keepPhotos.length}
+        </button>
       </div>
 
       {showAlbumModal && (

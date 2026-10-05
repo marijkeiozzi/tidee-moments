@@ -91,6 +91,21 @@ const cases: Case[] = [
     expect: 'delete',
   },
   {
+    name: 'small image with no camera data and nobody in it (cropped screenshot / video still)',
+    signals: { ...BASE, sharpness: 200, isLowQuality: true, qualityReason: 'low-resolution', noCameraExif: true, faceCount: 0 },
+    expect: 'delete',
+  },
+  {
+    name: 'small image with no camera data but a person in it (old forwarded photo)',
+    signals: { ...BASE, sharpness: 200, isLowQuality: true, qualityReason: 'low-resolution', noCameraExif: true, faceCount: 0, hasPerson: true },
+    expect: 'review',
+  },
+  {
+    name: 'small image, camera data unknown (added before the field existed)',
+    signals: { ...BASE, sharpness: 200, isLowQuality: true, qualityReason: 'low-resolution', faceCount: 0 },
+    expect: 'review',
+  },
+  {
     name: 'photo of a pot (cookware, no person/pet/food) at high confidence',
     signals: { ...BASE, sharpness: 200, isUtilityPhoto: true, utilityLabel: 'Dutch oven', utilityConfidence: 0.97, faceCount: 0 },
     expect: 'delete',

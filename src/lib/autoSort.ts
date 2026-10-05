@@ -61,10 +61,9 @@ export interface AutoSortResult {
   moments: Moment[];
 }
 
-// How often the progress callback fires for a big batch — calling it (and the React state
-// update it usually drives) on every single photo would mean thousands of re-renders for a
-// batch of thousands; this keeps the UI feeling live without that overhead.
-const PROGRESS_STEP = 10;
+// The progress callback fires at most this often (plus always on the last photo) — live from
+// the very first photo on a slow phone, without a re-render per photo on a fast computer.
+const PROGRESS_INTERVAL_MS = 150;
 
 interface Check extends ClassifySignals {
   photo: Photo;
@@ -91,7 +90,9 @@ async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
     ]);
     // After the face check, so the slow person detector is skipped whenever a face already
     // settles it (see DetectMode).
-    const scene = await classifyScene(image, face.faceCount > 0 ? 'never' : isDocument ? 'always' : 'auto').catch(() =>
+    // The detector also has to rule out a person before a small camera-less image is set aside.
+    const smallNoCamera = photo.hasCameraExif === false && quality.reason === 'low-resolution';
+    const scene = await classifyScene(image, face.faceCount > 0 ? 'never' : isDocument || smallNoCamera ? 'always' : 'auto').catch(() =>
       summarizeScene([], null),
     );
     if (thumb) saveThumb(photo.id, thumb).catch(() => {});
@@ -106,6 +107,7 @@ async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
       utilityLabel: scene.label,
       utilityConfidence: scene.confidence,
       hasPerson: scene.hasPerson,
+      noCameraExif: photo.hasCameraExif === false,
       eyesClosed: face.eyesClosed,
       facingAway: face.facingAway,
       faceCount: face.faceCount,
@@ -128,6 +130,8 @@ export async function runAutoSort(
   const keep: Photo[] = [];
   const toDelete: DeleteCandidate[] = [];
   let done = 0;
+  let lastReported = 0;
+  onProgress(0, photos.length);
 
   const checks = await mapWithConcurrency(photos, pickPhotoConcurrency(), async (photo) => {
     let check: Check;
@@ -157,7 +161,11 @@ export async function runAutoSort(
       }
     }
     done++;
-    if (done % PROGRESS_STEP === 0 || done === photos.length) onProgress(done, photos.length);
+    const now = performance.now();
+    if (done === photos.length || now - lastReported > PROGRESS_INTERVAL_MS) {
+      lastReported = now;
+      onProgress(done, photos.length);
+    }
     return check;
   });
 

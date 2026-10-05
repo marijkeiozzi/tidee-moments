@@ -26,6 +26,8 @@ export interface ClassifySignals {
   // Someone is in frame per the object detector — sees bodies, sleeping babies and the backs of
   // heads that face detection misses. Optional so older callers/fixtures default to "no".
   hasPerson?: boolean;
+  // true only when the upload positively found no camera Make/Model (unknown = undefined).
+  noCameraExif?: boolean;
   eyesClosed: boolean;
   facingAway: boolean;
   faceCount: number;
@@ -193,6 +195,19 @@ export function classifyPhoto(s: ClassifySignals, dup?: DuplicateContext, sensit
       reason: 'Too blurry to make out',
       evidence: `Sharpness score ${Math.round(s.sharpness)} — far below even a soft-focus shot; the subject isn't recognizable.`,
       scores: { ...base, confidence: 0.85 },
+    };
+  }
+
+  // 5a. A small image with no camera data at all and nobody in it — a cropped screenshot, a
+  // video still, a saved thumbnail. Phone cameras always write Make/Model, and photos that lose
+  // it on the way (WhatsApp, Messenger) are still far bigger than this, so a genuine memory
+  // never matches all three.
+  if (s.noCameraExif && s.isLowQuality && s.qualityReason === 'low-resolution' && s.faceCount === 0 && !s.hasPerson) {
+    return {
+      verdict: 'delete',
+      reason: 'Looks like a screenshot or saved image',
+      evidence: 'Small, with no camera information in the file and nobody in it — consistent with a screenshot, video still or image saved from an app, not a photo taken with a camera.',
+      scores: { ...base, confidence: 0.8 },
     };
   }
 

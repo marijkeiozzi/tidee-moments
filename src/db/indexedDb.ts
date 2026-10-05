@@ -28,6 +28,9 @@ export interface Photo {
   isScreenshot: boolean;
   // When it was moved to Recently Deleted — it's removed for good TRASH_RETENTION_DAYS later.
   trashedAt?: number | null;
+  // From the upload's EXIF read (see photoDate.ts). Missing on photos added before this existed,
+  // which the sort treats as "unknown", never as "no camera".
+  hasCameraExif?: boolean;
 }
 
 export interface Album {
@@ -130,6 +133,7 @@ export interface NewPhotoEntry {
   inMemory?: boolean;
   capturedAt: number;
   isScreenshot: boolean;
+  hasCameraExif?: boolean;
 }
 
 export interface AddPhotosResult {
@@ -148,7 +152,7 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
   // Bounded concurrency, sized to the device — reading every file's full bytes into memory at
   // once for a batch of thousands would spike memory enough to hang the tab; too low a cap
   // just leaves cores idle. See lib/concurrency.ts.
-  await mapWithConcurrency(entries, pickConcurrency(), async ({ file, capturedAt, isScreenshot, inMemory }) => {
+  await mapWithConcurrency(entries, pickConcurrency(), async ({ file, capturedAt, isScreenshot, inMemory, hasCameraExif }) => {
     try {
       // Read the file's bytes into a plain, in-memory Blob before storing it — a raw File
       // from an <input type="file"> pick can end up saved as a live reference to the file on
@@ -171,6 +175,7 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
         analysis: null,
         note: '',
         isScreenshot,
+        hasCameraExif,
       });
       added++;
     } catch (err) {
