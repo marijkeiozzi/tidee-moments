@@ -81,10 +81,15 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
       let lastShown = 0;
       await mapWithConcurrency(files, pickUploadConcurrency(), async (file) => {
         try {
-          // A plain in-memory copy first: a phone picker's read permission on the original can
-          // expire partway through a big batch, failing later reads with no useful error.
-          const bytes = await file.arrayBuffer();
-          const safe = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
+          // On phones, a plain in-memory copy first: a phone picker's read permission on the
+          // original can expire partway through a big batch, failing later reads with no useful
+          // error. Computers don't need it, and skipping it matters there: the browser holds
+          // copies like this until it gets round to freeing them, and a few thousand photos
+          // (several GB) filled its photo memory, so later previews failed to save or show.
+          // Saving the picked file itself copies it straight into storage.
+          const safe = isMobileDevice()
+            ? new File([await file.arrayBuffer()], file.name, { type: file.type, lastModified: file.lastModified })
+            : file;
           // Read EXIF from the original before any HEIC conversion — conversion drops EXIF,
           // which the screenshot check depends on.
           const meta = await getFileMeta(safe);
