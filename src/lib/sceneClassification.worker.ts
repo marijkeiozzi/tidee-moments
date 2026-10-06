@@ -13,6 +13,8 @@
 import * as tf from '@tensorflow/tfjs';
 import { setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
+import * as faceapi from '@vladmandic/face-api/dist/face-api.esm-nobundle.js';
+import { summarizeFaces, type FaceCheck } from './faceSummary';
 import { IMAGENET_CLASSES } from './imagenetClasses';
 import { couldBeObjectPhoto, summarizeScene, type SceneClassification, type SceneDetection, type ScenePrediction } from './sceneCategories';
 import type { DetectMode } from './sceneClassification';
@@ -59,6 +61,58 @@ function loadDetector(): Promise<cocoSsd.ObjectDetection> {
   return detectorPromise;
 }
 
+// The face check (eyes closed, facing away, smiles) can run here too, using a maintained fork of
+// face-api.js built on this same modern tfjs and the same self-hosted model files. On the main
+// thread it runs one photo at a time and, on many computers, on tfjs's slow plain-JavaScript
+// backend; here each worker in the pool runs it on WebAssembly, side by side.
+let faceModelsPromise: Promise<void> | null = null;
+function loadFaceModels(): Promise<void> {
+  if (!faceModelsPromise) {
+    faceModelsPromise = ensureBackend().then(async () => {
+      // face-api looks for a DOM; a worker has none, so point it at the worker equivalents.
+      faceapi.env.setEnv({
+        Canvas: OffscreenCanvas,
+        CanvasRenderingContext2D: OffscreenCanvasRenderingContext2D,
+        Image: class {},
+        ImageData,
+        Video: class {},
+        createCanvasElement: () => new OffscreenCanvas(1, 1),
+        createImageElement: () => {
+          throw new Error('no images in a worker');
+        },
+        createVideoElement: () => {
+          throw new Error('no video in a worker');
+        },
+        fetch: (url: string, init?: RequestInit) => fetch(url, init),
+        readFile: () => {
+          throw new Error('no file system in a worker');
+        },
+      } as unknown as Parameters<typeof faceapi.env.setEnv>[0]);
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_ROOT),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_ROOT),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_ROOT),
+      ]);
+    });
+  }
+  return faceModelsPromise;
+}
+
+async function detectFaces(bitmap: ImageBitmap): Promise<FaceCheck> {
+  await loadFaceModels();
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('no 2d context');
+  ctx.drawImage(bitmap, 0, 0);
+  // Handed over as a canvas, not a tensor, so face-api scales it exactly as the main-thread
+  // version does (browser canvas scaling rather than tfjs's), and decisions match.
+  const detections = await faceapi
+    .detectAllFaces(canvas as unknown as HTMLCanvasElement, new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks()
+    .withFaceExpressions();
+  return summarizeFaces(detections, bitmap.width * bitmap.height);
+}
+
 const TOP_K = 5;
 // Low on purpose — sceneCategories decides how much to trust each score; a faint "person" is
 // still worth knowing about before calling something "just an object".
@@ -99,8 +153,22 @@ async function detectObjects(bitmap: ImageBitmap): Promise<SceneDetection[]> {
   return detections.map((d) => ({ label: d.class, score: d.score, area: (d.bbox[2] * d.bbox[3]) / (w * h) }));
 }
 
-self.onmessage = async (e: MessageEvent<{ id: number; blob?: Blob; bitmap?: ImageBitmap; detect?: DetectMode }>) => {
-  const { id, blob, detect = 'auto' } = e.data;
+self.onmessage = async (
+  e: MessageEvent<{ id: number; op?: 'scene' | 'faces'; blob?: Blob; bitmap?: ImageBitmap; detect?: DetectMode }>,
+) => {
+  const { id, blob, detect = 'auto', op = 'scene' } = e.data;
+  if (op === 'faces') {
+    const bitmap = e.data.bitmap!;
+    try {
+      self.postMessage({ id, faces: await detectFaces(bitmap) });
+    } catch (err) {
+      // Reported back so the caller can fall back to the main-thread face check.
+      self.postMessage({ id, error: String(err) });
+    } finally {
+      bitmap.close();
+    }
+    return;
+  }
   let result: SceneClassification;
   try {
     const bitmap = e.data.bitmap ?? (await createImageBitmap(blob!));

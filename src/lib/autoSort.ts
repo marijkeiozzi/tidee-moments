@@ -5,7 +5,7 @@ import { detectLowQuality, type QualityResult } from './qualityDetection';
 import { computeImageHash, findDuplicateGroups, hammingDistance } from './duplicateDetection';
 import { groupIntoBursts } from './bursts';
 import { detectDocumentLike } from './documentDetection';
-import { classifyScene } from './sceneClassification';
+import { classifyScene, detectFacesInWorker, facesInWorker } from './sceneClassification';
 import { summarizeScene } from './sceneCategories';
 import { scorePhotoQuality } from './photoScore';
 import { mapWithConcurrency, pickPhotoConcurrency } from './concurrency';
@@ -82,7 +82,9 @@ async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
   try {
     const [{ isBlurry, sharpness }, face, quality, hash, isDocument, thumb] = await Promise.all([
       detectBlur(image).catch(() => ({ isBlurry: false, sharpness: Infinity })),
-      detectClosedEyes(image).catch(() => NO_FACE_CHECK),
+      (facesInWorker() ? detectFacesInWorker(image).catch(() => detectClosedEyes(image)) : detectClosedEyes(image)).catch(
+        () => NO_FACE_CHECK,
+      ),
       detectLowQuality(image).catch((): QualityResult => ({ isLowQuality: false })),
       computeImageHash(image).catch(() => null),
       detectDocumentLike(image).catch(() => false),
