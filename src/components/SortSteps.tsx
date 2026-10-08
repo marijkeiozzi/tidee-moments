@@ -41,7 +41,7 @@ const PREVIEW_COUNT = 8;
 export function ReadyToSort({ photos, onSort }: { photos: Photo[]; onSort: () => void }) {
   const count = photos.length;
   const latest = photos.slice(-PREVIEW_COUNT).reverse();
-  const minutesPerThousand = isMobileDevice() ? 'several minutes' : 'a minute or two';
+  const minutesPerThousand = isMobileDevice() ? 'several minutes' : 'a couple of minutes';
   return (
     <section className="bg-white border border-black/5 rounded-3xl p-5 sm:p-6 flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -65,7 +65,7 @@ export function ReadyToSort({ photos, onSort }: { photos: Photo[]; onSort: () =>
           </div>
         ))}
       </div>
-      {isMobileDevice() && <SaveSpaceOption />}
+      <SaveSpaceOption />
       <p className="text-xs text-[#8A8177]">
         Got more? Add them above first and they'll all be sorted together. Sorting takes about {minutesPerThousand} per
         1,000 photos. Keep this page open while it runs.
@@ -74,7 +74,7 @@ export function ReadyToSort({ photos, onSort }: { photos: Photo[]; onSort: () =>
   );
 }
 
-// Phones only (see shrinkPhoto.ts) — with the print-size disclaimer right next to the choice.
+// See shrinkPhoto.ts — with the print-size disclaimer right next to the choice.
 function SaveSpaceOption() {
   const [on, setOn] = useState(getSaveSpace);
   return (
@@ -89,11 +89,11 @@ function SaveSpaceOption() {
         className="mt-0.5 h-4 w-4 shrink-0 accent-[#BB5133]"
       />
       <span className="text-xs leading-relaxed text-[#5B5349]">
-        <strong className="text-sm font-semibold text-[#231F1B]">Save space on this phone</strong>
+        <strong className="text-sm font-semibold text-[#231F1B]">Save space</strong>
         <br />
         While sorting, each photo is stored at print quality: up to 3200 pixels on the longest side (about 8
-        megapixels), enough for sharp prints up to 8×10 in (20×25 cm), in about a third to half the space. Your
-        originals in your camera roll are never changed. Downloads and backups contain the stored version, so untick
+        megapixels), enough for sharp prints up to 8×10 in (20×25 cm), in about a third to half the space, so far more
+        fit on this device. Your originals in Photos, iCloud or your camera roll are never changed. Downloads and backups contain the stored version, so untick
         this before sorting if you want full-size copies for larger prints.
       </span>
     </label>

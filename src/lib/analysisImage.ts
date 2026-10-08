@@ -24,12 +24,14 @@ export interface AnalysisImage {
 
 export const BLUR_SAMPLE_SIDE = 300;
 
-function scaledCanvas(source: CanvasImageSource, srcW: number, srcH: number, maxSide: number): HTMLCanvasElement {
+function scaledCanvas(source: CanvasImageSource, srcW: number, srcH: number, maxSide: number, readBack = true): HTMLCanvasElement {
   const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(srcW * scale));
   canvas.height = Math.max(1, Math.round(srcH * scale));
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  // Canvases whose pixels the checks read back are kept in ordinary memory; the print copy is only
+  // encoded, so it can be scaled on the graphics chip.
+  const ctx = canvas.getContext('2d', { willReadFrequently: readBack });
   if (!ctx) throw new Error('no 2d context');
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
   return canvas;
@@ -42,7 +44,7 @@ export async function decodeForAnalysis(blob: Blob, { printSide }: { printSide?:
     const blurSample = scaledCanvas(bitmap, bitmap.width, bitmap.height, BLUR_SAMPLE_SIDE);
     const print =
       printSide && Math.max(bitmap.width, bitmap.height) > printSide
-        ? scaledCanvas(bitmap, bitmap.width, bitmap.height, printSide)
+        ? scaledCanvas(bitmap, bitmap.width, bitmap.height, printSide, false)
         : undefined;
     return {
       print,

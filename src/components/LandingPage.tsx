@@ -91,7 +91,7 @@ const FAQS = [
   },
   {
     q: 'Are my photos kept at full quality?',
-    a: 'On a computer, yes: every photo is kept exactly as it is. On a phone, where space is tighter, photos are stored at print quality by default: up to 3200 pixels on the longest side (about 8 megapixels), enough for sharp prints up to 8×10 in (20×25 cm), in about a third to half the space. Your camera roll is never changed, and you can untick "Save space" before sorting to keep full-size copies.',
+    a: 'By default, Tidee Moments stores each photo at print quality: up to 3200 pixels on the longest side (about 8 megapixels), enough for sharp prints up to 8×10 in (20×25 cm), in about a third to half the space, so far more photos fit on your device. Your originals in Photos, iCloud or your camera roll are never changed. Untick "Save space" before sorting if you want full-size copies for larger prints.',
   },
   {
     q: 'What if my browser clears its data?',

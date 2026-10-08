@@ -1,4 +1,4 @@
-// "Save space" (phones): during the sort, each photo's stored copy is swapped for a print-quality
+// "Save space" (on by default, phones and computers): during the sort, each photo's stored copy is swapped for a print-quality
 // one. A 12-megapixel phone photo (4032 x 3024) becomes 3200 x 2400 — 300 dpi on an 8 x 10 in
 // (20 x 25 cm) print — at high JPEG quality, roughly a third to a half of the bytes. Done in the
 // sort, from the decode it already makes, so adding photos stays as fast as before. Smaller
@@ -9,7 +9,6 @@
 // photo lands on the right day when imported anywhere else) and the camera make/model.
 // Rotation is already applied to the pixels.
 import { parse } from 'exifr';
-import { isMobileDevice } from './concurrency';
 
 export const PRINT_MAX_SIDE = 3200;
 const JPEG_QUALITY = 0.9;
@@ -42,9 +41,8 @@ function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
 }
 
-// Phones only: storage space is tightest there. Computers keep full-size originals.
 export function saveSpaceActive(): boolean {
-  return isMobileDevice() && getSaveSpace();
+  return getSaveSpace();
 }
 
 // Whether a stored photo is worth re-encoding: PNG/GIF are usually screenshots or graphics —
@@ -67,8 +65,11 @@ export async function encodePrintCopy(print: HTMLCanvasElement, original: Blob, 
   } catch {
     // No camera info to carry over.
   }
-  const bytes = withExif(new Uint8Array(await jpeg.arrayBuffer()), { capturedAt, cameraMake, cameraModel });
-  return new Blob([bytes], { type: 'image/jpeg' });
+  // Start-of-image marker, the EXIF block, then the encoder's JPEG minus its own start marker —
+  // assembled as Blob parts, so the image bytes are never copied.
+  return new Blob([new Uint8Array([0xff, 0xd8]), exifSegment({ capturedAt, cameraMake, cameraModel }), jpeg.slice(2)], {
+    type: 'image/jpeg',
+  });
 }
 
 function exifDate(ms: number): string {
@@ -77,8 +78,8 @@ function exifDate(ms: number): string {
   return `${d.getFullYear()}:${p(d.getMonth() + 1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-// Builds a minimal little-endian EXIF block and puts it straight after the JPEG's start marker.
-function withExif(jpeg: Uint8Array, info: ShrinkInfo): Uint8Array<ArrayBuffer> {
+// Builds a minimal little-endian EXIF (APP1) segment, to go straight after the JPEG's start marker.
+function exifSegment(info: ShrinkInfo): Uint8Array<ArrayBuffer> {
   const ascii = (s: string) => [...s.replace(/[^\x20-\x7e]/g, '').slice(0, 60)].map((c) => c.charCodeAt(0)).concat(0);
   const date = ascii(exifDate(info.capturedAt));
   type Entry = { tag: number; type: number; data: number[] }; // type 2 = ASCII, 3 = SHORT, 4 = LONG
@@ -133,10 +134,9 @@ function withExif(jpeg: Uint8Array, info: ShrinkInfo): Uint8Array<ArrayBuffer> {
 
   const header = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00]; // "Exif\0\0"
   const segmentLength = 2 + header.length + tiff.length;
-  const out = new Uint8Array(jpeg.length + 2 + segmentLength);
-  out.set([0xff, 0xd8, 0xff, 0xe1, segmentLength >> 8, segmentLength & 0xff]);
-  out.set(header, 6);
-  out.set(tiff, 6 + header.length);
-  out.set(jpeg.subarray(2), 6 + header.length + tiff.length);
+  const out = new Uint8Array(2 + segmentLength);
+  out.set([0xff, 0xe1, segmentLength >> 8, segmentLength & 0xff]);
+  out.set(header, 4);
+  out.set(tiff, 4 + header.length);
   return out;
 }

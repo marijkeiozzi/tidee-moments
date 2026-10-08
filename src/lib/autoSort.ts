@@ -11,7 +11,7 @@ import { summarizeScene } from './sceneCategories';
 import { scorePhotoQuality } from './photoScore';
 import { mapWithConcurrency, pickPhotoConcurrency } from './concurrency';
 import { decodeForAnalysis, makeThumbnail, releaseAnalysisImage } from './analysisImage';
-import { replacePhotoBlob, saveThumb } from '../db/indexedDb';
+import { getPhotosByIds, replacePhotoBlob, saveThumb } from '../db/indexedDb';
 import { classifyPhoto, type ClassifySignals, type DuplicateContext, type Sensitivity } from './classifyPhoto';
 
 export type { Sensitivity };
@@ -128,7 +128,7 @@ async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
   }
 }
 
-// Save space (phones): store the print-quality copy instead of the full-size original. Best
+// Save space: store the print-quality copy instead of the full-size original. Best
 // effort — if anything goes wrong the original simply stays.
 async function swapInPrintCopy(photo: Photo, print: HTMLCanvasElement) {
   try {
@@ -136,7 +136,10 @@ async function swapInPrintCopy(photo: Photo, print: HTMLCanvasElement) {
     if (!smaller) return;
     await replacePhotoBlob(photo.id, smaller);
     // The same Photo object is shared by the inbox and this review; point it at the stored copy.
-    photo.blob = smaller;
+    // Read back from storage rather than keeping the in-memory one: thousands of those held at
+    // once fill the browser's photo memory (previews then fail to load).
+    const [stored] = await getPhotosByIds([photo.id]);
+    photo.blob = stored?.blob ?? smaller;
   } catch {
     // Keep the original.
   }
