@@ -187,6 +187,13 @@ export interface NewPhotoEntry {
 export interface AddPhotosResult {
   added: number;
   failed: number;
+  // The browser refused to store any more: this device's storage for the site is full.
+  storageFull?: boolean;
+}
+
+function isQuotaError(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name ?? '';
+  return name === 'QuotaExceededError' || /quota/i.test(String((err as Error)?.message ?? ''));
 }
 
 // Each photo gets its own transaction (via db.put, not a shared tx.store.put across the
@@ -196,6 +203,7 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
   const db = await getDb();
   let added = 0;
   let failed = 0;
+  let storageFull = false;
 
   // Bounded concurrency, sized to the device — reading every file's full bytes into memory at
   // once for a batch of thousands would spike memory enough to hang the tab; too low a cap
@@ -230,11 +238,12 @@ export async function addPhotos(entries: NewPhotoEntry[]): Promise<AddPhotosResu
       added++;
     } catch (err) {
       console.error('Failed to save photo', file.name, err);
+      if (isQuotaError(err)) storageFull = true;
       failed++;
     }
   });
 
-  return { added, failed };
+  return { added, failed, storageFull };
 }
 
 export async function getAllPhotos(): Promise<Photo[]> {
@@ -275,6 +284,18 @@ async function updateMeta(id: string, change: Partial<Omit<PhotoMeta, 'id'>>): P
 
 export async function updatePhotoStatus(id: string, status: PhotoStatus): Promise<void> {
   await updateMeta(id, { status, trashedAt: status === 'trashed' ? Date.now() : null });
+}
+
+// "Save space" (see shrinkPhoto.ts): swaps a photo's stored image for its print-quality copy.
+// The new image is a fresh in-memory one (never a Blob read back from storage, which iPhone
+// Safari can fail to re-store), and only the image changes — status, album etc. live in meta.
+export async function replacePhotoBlob(id: string, blob: Blob): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction('photos', 'readwrite');
+  const store = tx.objectStore('photos');
+  const existing = await store.get(id);
+  if (existing) await store.put({ ...existing, blob });
+  await tx.done;
 }
 
 // Saves a whole review in ONE transaction: every kept photo (filed into the album, if any) and

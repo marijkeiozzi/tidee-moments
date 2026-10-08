@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import UploadZone from './components/UploadZone';
 import SwipeDeck from './components/SwipeDeck';
 import AlbumGrid from './components/AlbumGrid';
@@ -9,6 +9,7 @@ import PersonGrid from './components/PersonGrid';
 import AutoSortReview, { type ConfirmAlbumChoice } from './components/AutoSortReview';
 import SavingScreen from './components/SavingScreen';
 import SortProgress from './components/SortProgress';
+import { ReadyToSort, StepHeader } from './components/SortSteps';
 import AccountMenu from './components/AccountMenu';
 import UpgradeDialog from './components/UpgradeDialog';
 import { useAccount } from './lib/account';
@@ -70,9 +71,6 @@ export default function App() {
   // Every inbox photo ever seen, kept even after it's swiped away — so session boundaries
   // (computed from this) don't shift as the live queue shrinks mid-sort.
   const [allInboxEver, setAllInboxEver] = useState<Photo[]>([]);
-  // Photo ids already handed to auto-sort, so it fires once per photo (on load or on upload)
-  // instead of re-triggering every render or looping after a cancel puts photos back in view.
-  const autoSortedIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setAllInboxEver((prev) => {
@@ -94,7 +92,8 @@ export default function App() {
     () =>
       sessions
         .map((s) => {
-          const photos = inbox.filter((p) => s.photoIds.includes(p.id));
+          const ids = new Set(s.photoIds);
+          const photos = inbox.filter((p) => ids.has(p.id));
           return { session: s, remaining: photos.length, previewPhoto: photos[0] };
         })
         .filter((s) => s.remaining > 0),
@@ -113,17 +112,13 @@ export default function App() {
   // (same set "Sort All" uses), independent of which bundle (if any) is open.
   const allSortablePhotos = useMemo(() => inbox.filter((p) => !p.isScreenshot), [inbox]);
 
-  const photosToSort = useMemo(
-    () =>
-      activeSelection === 'all'
-        ? inbox.filter((p) => !p.isScreenshot)
-        : activeSelection === 'screenshots'
-          ? inbox.filter((p) => p.isScreenshot)
-          : activeSession
-            ? inbox.filter((p) => activeSession.photoIds.includes(p.id))
-            : [],
-    [activeSelection, inbox, activeSession],
-  );
+  const photosToSort = useMemo(() => {
+    if (activeSelection === 'all') return inbox.filter((p) => !p.isScreenshot);
+    if (activeSelection === 'screenshots') return inbox.filter((p) => p.isScreenshot);
+    if (!activeSession) return [];
+    const ids = new Set(activeSession.photoIds);
+    return inbox.filter((p) => ids.has(p.id));
+  }, [activeSelection, inbox, activeSession]);
 
   useEffect(() => {
     if (activeSelection && activeSelection !== 'all' && photosToSort.length === 0) {
@@ -200,16 +195,22 @@ export default function App() {
 
   async function handleKeepAll() {
     const toKeep = photosToSort;
-    setInbox((prev) => prev.filter((p) => !toKeep.some((k) => k.id === p.id)));
+    const keepIds = new Set(toKeep.map((p) => p.id));
+    setInbox((prev) => prev.filter((p) => !keepIds.has(p.id)));
     await Promise.all(toKeep.map((p) => updatePhotoStatus(p.id, 'kept')));
     refreshKeptWithoutAlbumCount();
   }
 
   async function handleDeleteAll() {
     const toDelete = photosToSort;
-    setInbox((prev) => prev.filter((p) => !toDelete.some((d) => d.id === p.id)));
+    const deleteIds = new Set(toDelete.map((p) => p.id));
+    setInbox((prev) => prev.filter((p) => !deleteIds.has(p.id)));
     await Promise.all(toDelete.map((p) => updatePhotoStatus(p.id, 'trashed')));
   }
+
+  // The Sort tab is two steps: 1. add photos (as many goes as needed), 2. sort and review —
+  // sorting only starts when the parent presses "Sort my photos".
+  const sortStepActive = autoSorting || Boolean(autoSortResult) || Boolean(savingProgress);
 
   async function handleAutoSort(nextSensitivity: Sensitivity = sensitivity) {
     if (allSortablePhotos.length === 0) return;
@@ -239,17 +240,6 @@ export default function App() {
       setResorting(false);
     }
   }
-
-  // Sorting starts on its own the moment there are photos to sort — no button tap needed,
-  // whether they just finished loading from IndexedDB or were just dropped in.
-  useEffect(() => {
-    if (autoSorting || autoSortResult || confirmingAutoSort) return;
-    const unsorted = allSortablePhotos.filter((p) => !autoSortedIdsRef.current.has(p.id));
-    if (unsorted.length === 0) return;
-    for (const p of allSortablePhotos) autoSortedIdsRef.current.add(p.id);
-    handleAutoSort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allSortablePhotos, autoSorting, autoSortResult, confirmingAutoSort]);
 
   function handleMoveAutoSort(photoId: string, to: 'keep' | 'delete') {
     setAutoSortResult((prev) => {
@@ -289,7 +279,8 @@ export default function App() {
       // review stays exactly as it was to try again.
       await savePhotoChoices({ keepIds: keep.map((p) => p.id), trashIds: toDelete.map((d) => d.photo.id), albumId });
       setSavingProgress({ done: keep.length, total: keep.length, photo: keep[keep.length - 1] ?? null });
-      setInbox((prev) => prev.filter((p) => !keep.some((k) => k.id === p.id) && !toDelete.some((d) => d.photo.id === p.id)));
+      const doneIds = new Set([...keep.map((p) => p.id), ...toDelete.map((d) => d.photo.id)]);
+      setInbox((prev) => prev.filter((p) => !doneIds.has(p.id)));
       if (albumId) {
         await refreshAlbums();
         setActiveAlbumId(albumId);
@@ -477,19 +468,41 @@ export default function App() {
 
       {tab === 'sort' && (
         <div className="flex flex-col flex-1 gap-4">
-          {activeSelection === null && !autoSortResult && (
+          {activeSelection === null && (
+            <StepHeader
+              step={sortStepActive ? 2 : 1}
+              onBack={
+                autoSortResult && !confirmingAutoSort && !savingProgress
+                  ? () => {
+                      if (
+                        window.confirm(
+                          'Go back to add more photos? This review will be redone afterwards, with the new photos included. Photos already checked are instant.',
+                        )
+                      )
+                        setAutoSortResult(null);
+                    }
+                  : undefined
+              }
+            />
+          )}
+          {activeSelection === null && !sortStepActive && (
             <div className="mb-2">
-              <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-3">Bring in the whole camera roll.</h1>
+              <h1 className="font-serif text-4xl sm:text-5xl leading-tight mb-3">Add your photos.</h1>
               <p className="text-[#7A7266] text-base sm:text-lg max-w-2xl leading-relaxed">
-                Hundreds or thousands at once is fine. Your photos are analysed right here on your device, and
-                nothing is uploaded anywhere — ever.
+                Up to 10,000 at a time, in as many goes as you like. When they're all in, press Sort. Everything stays
+                right here on your device, and nothing is uploaded anywhere.
               </p>
             </div>
           )}
-          {/* Hidden while sorting so the step 2 progress bar takes its place, in view, instead of
-              appearing below a screen-tall drop zone on a phone. */}
-          {!autoSorting && (
-            <UploadZone onSavePhotos={handleSavePhotos} onUploadComplete={refreshInbox} compact={Boolean(autoSortResult)} />
+          {activeSelection === null && !sortStepActive && allSortablePhotos.length > 0 && (
+            <ReadyToSort photos={allSortablePhotos} onSort={() => handleAutoSort()} />
+          )}
+          {activeSelection === null && !sortStepActive && (
+            <UploadZone
+              onSavePhotos={handleSavePhotos}
+              onUploadComplete={refreshInbox}
+              hasPhotos={allSortablePhotos.length > 0}
+            />
           )}
 
           {activeSelection === null && (
@@ -540,11 +553,7 @@ export default function App() {
             </>
           )}
 
-          {activeSelection === null ? (
-            !autoSorting && !autoSortResult && inbox.length === 0 && (
-              <p className="text-stone-400 text-center">Upload some photos above to get started 🌱</p>
-            )
-          ) : (
+          {activeSelection === null ? null : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <div className="flex items-center gap-3">

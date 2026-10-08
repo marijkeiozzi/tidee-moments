@@ -17,6 +17,9 @@ export interface AnalysisImage {
   // thresholds were tuned on exactly that; going full -> 800px -> 300px would come out a
   // little softer and could tip borderline photos into "blurry".
   blurSample: HTMLCanvasElement;
+  // Only when asked for (Save space on a phone): the photo scaled to print size, from the same
+  // single decode, so shrinking it costs no second decode.
+  print?: HTMLCanvasElement;
 }
 
 export const BLUR_SAMPLE_SIDE = 300;
@@ -32,12 +35,17 @@ function scaledCanvas(source: CanvasImageSource, srcW: number, srcH: number, max
   return canvas;
 }
 
-export async function decodeForAnalysis(blob: Blob): Promise<AnalysisImage> {
+export async function decodeForAnalysis(blob: Blob, { printSide }: { printSide?: number } = {}): Promise<AnalysisImage> {
   const bitmap = await createImageBitmap(blob);
   try {
     const canvas = scaledCanvas(bitmap, bitmap.width, bitmap.height, MAX_SIDE);
     const blurSample = scaledCanvas(bitmap, bitmap.width, bitmap.height, BLUR_SAMPLE_SIDE);
+    const print =
+      printSide && Math.max(bitmap.width, bitmap.height) > printSide
+        ? scaledCanvas(bitmap, bitmap.width, bitmap.height, printSide)
+        : undefined;
     return {
+      print,
       canvas,
       width: canvas.width,
       height: canvas.height,
@@ -52,7 +60,8 @@ export async function decodeForAnalysis(blob: Blob): Promise<AnalysisImage> {
 
 // Safari keeps canvas memory around until the canvas is shrunk; do it as soon as we're done.
 export function releaseAnalysisImage(image: AnalysisImage) {
-  for (const c of [image.canvas, image.blurSample]) {
+  for (const c of [image.canvas, image.blurSample, image.print]) {
+    if (!c) continue;
     c.width = 0;
     c.height = 0;
   }

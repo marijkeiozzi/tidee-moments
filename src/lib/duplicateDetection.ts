@@ -69,9 +69,19 @@ export function findDuplicateGroups(
     if (ra !== rb) parent[ra] = rb;
   }
 
+  // Split every hash into two plain 32-bit halves once, up front: the pair loop below runs
+  // n²/2 times (50 million for 10,000 photos), and BigInt maths inside it took many seconds.
+  const lo = new Int32Array(n);
+  const hi = new Int32Array(n);
   for (let i = 0; i < n; i++) {
+    lo[i] = Number(BigInt.asIntN(32, hashes[i].hash));
+    hi[i] = Number(BigInt.asIntN(32, hashes[i].hash >> 32n));
+  }
+  for (let i = 0; i < n; i++) {
+    const li = lo[i];
+    const hiI = hi[i];
     for (let j = i + 1; j < n; j++) {
-      if (hammingDistance(hashes[i].hash, hashes[j].hash) <= threshold) union(i, j);
+      if (popcount32(li ^ lo[j]) + popcount32(hiI ^ hi[j]) <= threshold) union(i, j);
     }
   }
 

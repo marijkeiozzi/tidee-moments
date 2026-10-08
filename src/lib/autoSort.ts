@@ -5,12 +5,13 @@ import { detectLowQuality, type QualityResult } from './qualityDetection';
 import { computeImageHash, findDuplicateGroups, hammingDistance } from './duplicateDetection';
 import { groupIntoBursts } from './bursts';
 import { detectDocumentLike } from './documentDetection';
+import { PRINT_MAX_SIDE, canShrink, encodePrintCopy, saveSpaceActive } from './shrinkPhoto';
 import { classifyScene, detectFacesInWorker, facesInWorker } from './sceneClassification';
 import { summarizeScene } from './sceneCategories';
 import { scorePhotoQuality } from './photoScore';
 import { mapWithConcurrency, pickPhotoConcurrency } from './concurrency';
 import { decodeForAnalysis, makeThumbnail, releaseAnalysisImage } from './analysisImage';
-import { saveThumb } from '../db/indexedDb';
+import { replacePhotoBlob, saveThumb } from '../db/indexedDb';
 import { classifyPhoto, type ClassifySignals, type DuplicateContext, type Sensitivity } from './classifyPhoto';
 
 export type { Sensitivity };
@@ -78,8 +79,13 @@ const NO_FACE_CHECK = { eyesClosed: false, facingAway: false, faceCount: 0, open
 const signalCache = new Map<string, Omit<Check, 'photo'>>();
 
 async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
-  const image = await decodeForAnalysis(photo.blob);
+  const shrink = saveSpaceActive() && canShrink(photo.blob);
+  const image = await decodeForAnalysis(photo.blob, { printSide: shrink ? PRINT_MAX_SIDE : undefined });
   try {
+    if (image.print) {
+      await swapInPrintCopy(photo, image.print);
+      image.print.width = image.print.height = 0; // a phone can let go of the big canvas now
+    }
     const [{ isBlurry, sharpness }, face, quality, hash, isDocument, thumb] = await Promise.all([
       detectBlur(image).catch(() => ({ isBlurry: false, sharpness: Infinity })),
       (facesInWorker() ? detectFacesInWorker(image).catch(() => detectClosedEyes(image)) : detectClosedEyes(image)).catch(
@@ -119,6 +125,20 @@ async function analyzePhoto(photo: Photo): Promise<Omit<Check, 'photo'>> {
     };
   } finally {
     releaseAnalysisImage(image);
+  }
+}
+
+// Save space (phones): store the print-quality copy instead of the full-size original. Best
+// effort — if anything goes wrong the original simply stays.
+async function swapInPrintCopy(photo: Photo, print: HTMLCanvasElement) {
+  try {
+    const smaller = await encodePrintCopy(print, photo.blob, photo.capturedAt);
+    if (!smaller) return;
+    await replacePhotoBlob(photo.id, smaller);
+    // The same Photo object is shared by the inbox and this review; point it at the stored copy.
+    photo.blob = smaller;
+  } catch {
+    // Keep the original.
   }
 }
 
@@ -310,7 +330,8 @@ export async function runAutoSort(
   }
   // Per-photo score breakdown for diagnosability — visible in devtools, never shown to the
   // parent using the app. See classifyPhoto.ts for what each column means.
-  if (debugRows.length > 0) console.table(debugRows);
+  // (Skipped for big batches — a table of thousands of rows only slows the page down.)
+  if (debugRows.length > 0 && debugRows.length <= 500) console.table(debugRows);
 
   // Group every processed photo into "moments" for the review UI — a burst becomes one moment,
   // and any photo that wasn't part of a burst becomes its own single-shot moment. This is purely

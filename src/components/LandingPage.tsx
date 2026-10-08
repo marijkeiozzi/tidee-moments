@@ -9,14 +9,14 @@ const STEPS = [
   {
     n: '1',
     emoji: '📥',
-    title: 'Bring in the whole roll',
-    body: 'Drop in hundreds or thousands of photos at once. Screenshots and receipts go into their own pile, so only real memories get sorted.',
+    title: 'Add the whole roll',
+    body: 'Add up to 10,000 photos at a time, in as many goes as you like. Screenshots and receipts go into their own pile, so only real memories get sorted.',
   },
   {
     n: '2',
     emoji: '✨',
-    title: 'It sorts itself',
-    body: 'Photos are grouped into moments. Near-identical shots are cut down to the best one, and blank or badly blurred shots are set aside — all on your device, nothing uploaded.',
+    title: 'Press Sort',
+    body: 'One tap and it sorts itself. Photos are grouped into moments. Near-identical shots are cut down to the best one, and blank or badly blurred shots are set aside — all on your device, nothing uploaded.',
   },
   {
     n: '3',
@@ -88,6 +88,10 @@ const FAQS = [
   {
     q: 'What happens to the originals when I set a photo aside?',
     a: 'Nothing. Tidee Moments works on its own copy of your photos, stored in your browser. Setting a photo aside only affects that copy — your camera roll and original files are never touched — and it waits in Recently Deleted for 30 days in case you change your mind.',
+  },
+  {
+    q: 'Are my photos kept at full quality?',
+    a: 'On a computer, yes: every photo is kept exactly as it is. On a phone, where space is tighter, photos are stored at print quality by default: up to 3200 pixels on the longest side (about 8 megapixels), enough for sharp prints up to 8×10 in (20×25 cm), in about a third to half the space. Your camera roll is never changed, and you can untick "Save space" before sorting to keep full-size copies.',
   },
   {
     q: 'What if my browser clears its data?',

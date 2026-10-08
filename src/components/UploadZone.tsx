@@ -10,9 +10,8 @@ interface UploadZoneProps {
   onSavePhotos: (entries: NewPhotoEntry[]) => Promise<AddPhotosResult>;
   // Called once at the end, so sorting starts on the whole batch rather than a partial one.
   onUploadComplete: () => Promise<void>;
-  // A slim "add more photos" bar instead of the big drop zone — used while a review is on screen,
-  // so the review (and its Create album button) isn't pushed below the fold.
-  compact?: boolean;
+  // Photos are already in: a shorter drop zone, so "Sort my photos" stays in view above it.
+  hasPhotos?: boolean;
 }
 
 // Reading and saving is mostly waiting on storage, so a few more at once than the photo checks
@@ -38,11 +37,15 @@ async function shouldConvertHeic(file: File): Promise<boolean> {
   return !(await nativeHeic);
 }
 
+// Most a single go can add. Plenty for a year or two of a camera roll; anyone picking more is
+// asked to add the rest in another go, rather than the browser tab struggling with it all at once.
+export const MAX_PHOTOS_PER_BATCH = 10_000;
+
 // The progress bar updates at most this often — live on a slow phone (no waiting for 10 photos
 // before it first moves), without thousands of re-renders on a fast computer.
 const PROGRESS_INTERVAL_MS = 120;
 
-export default function UploadZone({ onSavePhotos, onUploadComplete, compact = false }: UploadZoneProps) {
+export default function UploadZone({ onSavePhotos, onUploadComplete, hasPhotos = false }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -58,10 +61,15 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
     // files with a type that's positively something ELSE (video, pdf, etc.); an ambiguous type
     // is let through, and downstream per-file error handling (already in place) reports it as
     // failed rather than silently vanishing the whole batch if it turns out not to be an image.
-    const files = fileList.filter(
+    const images = fileList.filter(
       (f) => f.type === '' || f.type === 'application/octet-stream' || f.type.startsWith('image/') || isHeicFile(f),
     );
-    if (!files.length) return;
+    if (!images.length) {
+      if (fileList.length) setStatus("None of those were photos this app can read (JPEG, PNG, WebP or HEIC) — nothing was added.");
+      return;
+    }
+    const files = images.slice(0, MAX_PHOTOS_PER_BATCH);
+    const leftOver = images.length - files.length;
 
     // Shows the spinner the instant files land, before any HEIC conversion/EXIF reading
     // starts — otherwise the drop zone looks like nothing happened for the whole time it
@@ -79,7 +87,15 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
       let failed = 0;
       let screenshots = 0;
       let lastShown = 0;
+      let storageFull = false;
+      let notTried = 0;
       await mapWithConcurrency(files, pickUploadConcurrency(), async (file) => {
+        // Once storage is full every further save would fail too — stop trying.
+        if (storageFull) {
+          notTried++;
+          done++;
+          return;
+        }
         try {
           // On phones, a plain in-memory copy first: a phone picker's read permission on the
           // original can expire partway through a big batch, failing later reads with no useful
@@ -97,6 +113,7 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
           const result = await onSavePhotos([{ file: stored, inMemory: true, ...meta }]);
           added += result.added;
           failed += result.failed;
+          if (result.storageFull) storageFull = true;
           if (meta.isScreenshot && result.added) screenshots++;
         } catch {
           failed++;
@@ -111,10 +128,20 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
 
       await onUploadComplete();
 
-      const parts = [`Added ${added} photo${added === 1 ? '' : 's'}`];
+      const parts = [`Added ${added.toLocaleString()} photo${added === 1 ? '' : 's'}`];
       if (screenshots > 0) parts.push(`${screenshots} screenshot${screenshots === 1 ? '' : 's'} set aside separately`);
-      if (failed > 0) {
+      if (storageFull) {
+        const missed = failed + notTried;
+        parts.push(
+          `⚠️ This device ran out of space for photos, so ${missed.toLocaleString()} weren't added. Free up some storage, or sort and save what's here first, then add the rest`,
+        );
+      } else if (failed > 0) {
         parts.push(`⚠️ ${failed} photo${failed === 1 ? '' : 's'} couldn't be added — try adding ${failed === 1 ? 'it' : 'them'} again`);
+      }
+      if (leftOver > 0) {
+        parts.push(
+          `You picked ${images.length.toLocaleString()}, so the first ${MAX_PHOTOS_PER_BATCH.toLocaleString()} were added. Add the other ${leftOver.toLocaleString()} in another go`,
+        );
       }
       setStatus(parts.join(' · ') + '.');
     } finally {
@@ -125,11 +152,9 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
   return (
     <div>
       <div
-        className={
-          compact && !processing
-            ? 'border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:border-[#BB5133]/40 transition-colors'
-            : 'border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-3xl px-6 py-16 sm:py-20 text-center cursor-pointer hover:border-[#BB5133]/40 transition-colors'
-        }
+        className={`border-2 border-dashed border-black/15 bg-[#FBF8F2] rounded-3xl px-6 text-center cursor-pointer hover:border-[#BB5133]/40 transition-colors ${
+          hasPhotos && !processing ? 'py-8' : 'py-16 sm:py-20'
+        }`}
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -137,33 +162,7 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
           handleFiles(Array.from(e.dataTransfer.files));
         }}
       >
-        {compact && !processing ? (
-          <>
-            <span className="text-sm text-[#5B5349]">Have more photos? Drop them here or</span>
-            <span className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  inputRef.current?.click();
-                }}
-                className="text-sm font-semibold bg-[#231F1B] hover:bg-black text-white px-4 py-2 rounded-full transition-colors"
-              >
-                Add more photos
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  folderInputRef.current?.click();
-                }}
-                className="text-sm font-medium bg-white border border-black/10 text-[#231F1B] px-4 py-2 rounded-full hover:bg-[#F6F1E7] transition-colors"
-              >
-                Choose a folder
-              </button>
-            </span>
-          </>
-        ) : processing ? null : (
+        {processing || hasPhotos ? null : (
           <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-[#F6DFCF] flex items-center justify-center">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#BB5133" strokeWidth="1.8">
               <rect x="3" y="3" width="14" height="14" rx="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -173,17 +172,17 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
             </svg>
           </div>
         )}
-        {compact && !processing ? null : processing ? (
+        {processing ? (
           <SortProgress
             step={1}
             title="Adding your photos"
             done={progress.done}
             total={progress.total}
-            note="Keep this page open. Sorting starts by itself as soon as they're all in."
+            note="Keep this page open. Once they're all in, press Sort my photos."
           />
         ) : (
           <>
-            <h3 className="font-serif text-2xl sm:text-3xl mb-2">Drop photos here</h3>
+            <h3 className="font-serif text-2xl sm:text-3xl mb-2">{hasPhotos ? 'Add more photos' : 'Drop photos here'}</h3>
             <p className="text-[#8A8177] text-sm mb-6">JPEG, PNG or WebP. HEIC photos work in Safari.</p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
@@ -215,8 +214,8 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
               </button>
             </div>
             <p className="text-[#A69C8E] text-xs mt-6 max-w-sm mx-auto">
-              Uploading a big batch (100+ at once)? Use "Choose photos" or "Choose a folder" — dragging that many at
-              once can silently drop some, since browsers cap how many files a single drag can carry.
+              Up to 10,000 photos at a time. For big batches use "Choose a folder" — dragging hundreds at once can
+              silently drop some, since browsers cap how many files a single drag can carry.
             </p>
           </>
         )}
@@ -246,7 +245,7 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
         />
       </div>
 
-      {!processing && status && <p className="text-xs text-[#8A8177] mt-3">{status}</p>}
+      {!processing && status && <p className="text-sm text-[#5B5349] mt-3">{status}</p>}
 
       <p className="flex items-center gap-2 text-xs text-[#A69C8E] mt-4">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
