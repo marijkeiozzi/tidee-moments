@@ -90,6 +90,10 @@ const FAQS = [
     a: 'Nothing. Tidee Moments works on its own copy of your photos, stored in your browser. Setting a photo aside only affects that copy — your camera roll and original files are never touched — and it waits in Recently Deleted for 30 days in case you change your mind.',
   },
   {
+    q: 'Are my photos kept at full quality?',
+    a: "By default, Tidee Moments saves each photo at print quality: up to 3200 pixels on the longest side (about 8 megapixels), enough for sharp prints up to 8×10 in (20×25 cm), using about half the space. Your originals in Photos or your camera roll are never changed. If you want full-size copies for larger prints, untick \"Save space\" before adding your photos.",
+  },
+  {
     q: 'What if my browser clears its data?',
     a: "Your albums are stored only in your browser, so download a backup from the Albums tab now and then — the app reminds you. A backup is a normal .zip file you can keep anywhere and restore on any device. On iPhone, adding Tidee Moments to your Home Screen also helps Safari keep your photos.",
   },

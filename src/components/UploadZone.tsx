@@ -3,6 +3,7 @@ import SortProgress from './SortProgress';
 import { getFileMeta } from '../lib/photoDate';
 import { convertHeicIfNeeded, isHeicFile } from '../lib/heicConvert';
 import { isMobileDevice, mapWithConcurrency } from '../lib/concurrency';
+import { getSaveSpace, setSaveSpace, shrinkForStorage } from '../lib/shrinkPhoto';
 import type { AddPhotosResult, NewPhotoEntry } from '../db/indexedDb';
 
 interface UploadZoneProps {
@@ -48,6 +49,12 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
   const [status, setStatus] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [saveSpace, setSaveSpaceState] = useState(getSaveSpace);
+
+  function toggleSaveSpace(on: boolean) {
+    setSaveSpaceState(on);
+    setSaveSpace(on);
+  }
 
   async function handleFiles(fileList: File[]) {
     // Some mobile pickers (notably Android picking from a cloud-backed gallery like Google
@@ -93,7 +100,9 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
           // Read EXIF from the original before any HEIC conversion — conversion drops EXIF,
           // which the screenshot check depends on.
           const meta = await getFileMeta(safe);
-          const stored = (await shouldConvertHeic(safe)) ? await convertHeicIfNeeded(safe).catch(() => safe) : safe;
+          const converted = (await shouldConvertHeic(safe)) ? await convertHeicIfNeeded(safe).catch(() => safe) : safe;
+          // Print-quality copy instead of the full-size original, when "Save space" is on.
+          const stored = saveSpace ? await shrinkForStorage(converted, meta).catch(() => converted) : converted;
           const result = await onSavePhotos([{ file: stored, inMemory: true, ...meta }]);
           added += result.added;
           failed += result.failed;
@@ -247,6 +256,25 @@ export default function UploadZone({ onSavePhotos, onUploadComplete, compact = f
       </div>
 
       {!processing && status && <p className="text-xs text-[#8A8177] mt-3">{status}</p>}
+
+      {!processing && (
+        <label className="mt-4 flex items-start gap-3 bg-white border border-black/5 rounded-2xl px-4 py-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={saveSpace}
+            onChange={(e) => toggleSaveSpace(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[#BB5133]"
+          />
+          <span className="text-xs leading-relaxed text-[#5B5349]">
+            <strong className="text-sm font-semibold text-[#231F1B]">Save space: keep photos at print quality</strong>
+            <br />
+            Photos are saved at up to 3200 pixels on the longest side (about 8 megapixels), enough for sharp prints up to
+            8×10 in (20×25 cm), using about half the space. That makes big batches faster and lets this device hold
+            more. Your originals in Photos or your camera roll are never changed. Downloads and backups contain the saved
+            version, so turn this off before adding photos if you want full-size originals for larger prints.
+          </span>
+        </label>
+      )}
 
       <p className="flex items-center gap-2 text-xs text-[#A69C8E] mt-4">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">

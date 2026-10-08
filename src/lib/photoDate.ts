@@ -6,6 +6,9 @@ export interface FileMeta {
   // Camera Make/Model in the EXIF — written by the camera itself; screenshots, saved web images
   // and crops never have it. Kept on the photo so the sort can use it too.
   hasCameraExif: boolean;
+  // Written back into the photo if it's shrunk to print size (see shrinkPhoto.ts).
+  cameraMake?: string;
+  cameraModel?: string;
 }
 
 const SCREENSHOT_NAME_PATTERN = /screen[\s_-]?shot/i;
@@ -49,6 +52,8 @@ async function getDimensionKey(file: File): Promise<string | null> {
 export async function getFileMeta(file: File): Promise<FileMeta> {
   let capturedAt = file.lastModified || Date.now();
   let hasCameraExif = false;
+  let cameraMake: string | undefined;
+  let cameraModel: string | undefined;
 
   try {
     const exif = await parse(file, { pick: ['DateTimeOriginal', 'CreateDate', 'Make', 'Model'] });
@@ -57,6 +62,8 @@ export async function getFileMeta(file: File): Promise<FileMeta> {
       capturedAt = date.getTime();
     }
     hasCameraExif = Boolean(exif?.Make || exif?.Model);
+    if (typeof exif?.Make === 'string') cameraMake = exif.Make;
+    if (typeof exif?.Model === 'string') cameraModel = exif.Model;
   } catch {
     // No/unreadable EXIF — fall through with defaults.
   }
@@ -72,5 +79,5 @@ export async function getFileMeta(file: File): Promise<FileMeta> {
   // second full decode of every photo during upload. The sort already runs the same document
   // check on its shared working copy and sets those aside ("Looks like a screenshot or
   // document"), so they still never end up in an album.
-  return { capturedAt, isScreenshot: nameMatches || formatMatches || dimensionMatches, hasCameraExif };
+  return { capturedAt, isScreenshot: nameMatches || formatMatches || dimensionMatches, hasCameraExif, cameraMake, cameraModel };
 }
